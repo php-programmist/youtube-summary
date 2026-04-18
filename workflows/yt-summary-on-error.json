@@ -1,0 +1,53 @@
+{
+  "name": "yt-summary-on-error",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "text": "=⚠️ yt-summary упал\nУзел: {{ $json.execution.error.node.name }}\nСообщение: {{ $json.execution.error.message }}\nExecution ID: {{ $json.execution.id }}",
+        "operation": "sendMessage",
+        "additionalFields": {}
+      },
+      "id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+      "name": "Telegram - Error Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [300, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "",
+  "id": "2",
+  "meta": {
+    "instanceId": ""
+  },
+  "tags": []
+}
