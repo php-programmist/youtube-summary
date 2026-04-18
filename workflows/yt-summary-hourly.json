@@ -369,14 +369,14 @@
       "main": [
         [
           {
-            "node": "HTTP Request - Supadata Transcript",
+            "node": "HTTP Request - Ollama Unload",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "HTTP Request - Ollama Unload",
+            "node": "HTTP Request - Supadata Transcript",
             "type": "main",
             "index": 0
           }
