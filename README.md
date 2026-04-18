@@ -1,6 +1,6 @@
 # yt-summary
 
-Локальный сервис: раз в час проверяет YouTube-плейлист через RSS, для каждого нового видео получает субтитры через supadata.ai, суммирует локальной Ollama (8–12 пунктов + главная идея) и шлёт отчёт в Telegram. Модель загружается в VRAM только при наличии субтитров и выгружается после отправки всех сообщений. Дедупликация — через SQLite внутри тома n8n.
+Локальный сервис: раз в час проверяет YouTube-плейлист через RSS, для каждого нового видео получает субтитры через supadata.ai, суммирует локальной Ollama (8–12 пунктов + главная идея) и шлёт отчёт в Telegram. Модель загружается в VRAM только при наличии субтитров и выгружается после отправки всех сообщений. Дедупликация — через workflow staticData n8n.
 
 ## Стек
 
@@ -71,7 +71,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Флаг `--build` нужен только при первом запуске (или после изменения `Dockerfile`) — локально собирается образ `yt-summary-n8n:local` поверх `n8nio/n8n:latest` с глобально установленным `better-sqlite3` (используется Code-нодами для дедупликации).
+Флаг `--build` нужен только при первом запуске (или после изменения `Dockerfile`) — локально собирается образ `yt-summary-n8n:local` поверх `n8nio/n8n:latest`.
 
 При первом старте:
 
@@ -107,7 +107,7 @@ docker compose up -d --build
 
 Запустить `yt-summary-hourly` вручную кнопкой **Execute workflow**. RSS возвращает обычно последние ~15 видео плейлиста — по каждому в Telegram придёт сообщение с главной идеей и кратким обзором.
 
-Повторный ручной запуск сразу после → 0 сообщений: все видео уже помечены обработанными в SQLite (`/home/node/.n8n/state.db`).
+Повторный ручной запуск сразу после → 0 сообщений: все видео уже помечены обработанными в `staticData` workflow (хранится в БД n8n внутри named volume `yt-summary_n8n-data`).
 
 ## Верификация
 
@@ -125,9 +125,6 @@ docker compose up -d --build
 
 **GPU не виден в Ollama**
 Проверить, что `nvidia-ctk runtime configure --runtime=docker` выполнен и Docker перезапущен. Верифицировать: `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`.
-
-**`better-sqlite3` не грузится в Code node**
-Модуль устанавливается в кастомный образ `yt-summary-n8n:local` из `Dockerfile`. Убедиться, что: (1) образ пересобран после изменений в `Dockerfile` — `docker compose build n8n`; (2) в `docker-compose.yml` переменная `NODE_FUNCTION_ALLOW_EXTERNAL=better-sqlite3` на месте (allowlist n8n).
 
 **Бэкап / восстановление состояния n8n**
 Данные лежат в docker-managed volume, а не в папке проекта. Бэкап:
@@ -163,7 +160,7 @@ docker compose up -d
 
 ```
 yt-summary/
-├── Dockerfile                    # кастомный образ n8n + better-sqlite3
+├── Dockerfile                    # кастомный образ n8n (точка расширения)
 ├── docker-compose.yml
 ├── .env.example
 ├── .env                          # локальный, в .gitignore

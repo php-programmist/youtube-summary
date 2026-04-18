@@ -56,7 +56,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Normalize XML feed entries into flat items: { videoId, title, publishedAt, url }\nconst data = items[0].json;\nconst feed = data.feed;\n\nlet entries = feed.entry;\nif (!entries) return [];\nif (!Array.isArray(entries)) entries = [entries];\n\nreturn entries.map(entry => ({\n  json: {\n    videoId: entry['yt:videoId'],\n    title: Array.isArray(entry.title) ? entry.title[0] : entry.title,\n    publishedAt: Array.isArray(entry.published) ? entry.published[0] : entry.published,\n    url: `https://youtu.be/${entry['yt:videoId']}`\n  }\n}));"
+        "jsCode": "// Normalize XML feed entries into flat items: { videoId, title, publishedAt, url }\nconst data = $input.first().json;\nconst feed = data.feed;\n\nlet entries = feed.entry;\nif (!entries) return [];\nif (!Array.isArray(entries)) entries = [entries];\n\nreturn entries.map(entry => ({\n  json: {\n    videoId: entry['yt:videoId'],\n    title: Array.isArray(entry.title) ? entry.title[0] : entry.title,\n    publishedAt: Array.isArray(entry.published) ? entry.published[0] : entry.published,\n    url: `https://youtu.be/${entry['yt:videoId']}`\n  }\n}));"
       },
       "id": "e5f6a7b8-c9d0-1234-efab-345678901234",
       "name": "Code - Normalize List",
@@ -66,10 +66,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter out already-processed videos using SQLite state.\n// If all videos were processed, this returns an empty array and\n// the downstream SplitInBatches node simply has nothing to iterate — no explicit IF needed.\nconst Database = require('better-sqlite3');\nconst db = new Database('/home/node/.n8n/state.db');\ndb.exec(`CREATE TABLE IF NOT EXISTS processed_videos (\n  video_id TEXT PRIMARY KEY,\n  title TEXT,\n  processed_at TEXT DEFAULT (datetime('now')),\n  status TEXT,\n  lang TEXT\n)`);\nconst stmt = db.prepare('SELECT 1 FROM processed_videos WHERE video_id = ?');\nreturn items.filter(i => !stmt.get(i.json.videoId));"
+        "jsCode": "// Filter out already-processed videos using workflow staticData.\n// State lives in n8n's DB inside this workflow — survives restarts, no external modules.\nconst staticData = $getWorkflowStaticData('global');\nconst processed = staticData.processed || {};\nreturn $input.all().filter(i => !(i.json.videoId in processed));"
       },
       "id": "f6a7b8c9-d0e1-2345-fabc-456789012345",
-      "name": "Code - Filter New via SQLite",
+      "name": "Code - Filter New",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [880, 400]
@@ -167,7 +167,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Trim transcript to ≤ 40000 chars before sending to Ollama (heuristic for num_ctx=16k tokens)\n// Also carry forward videoId, title, url, lang from the loop item and transcript response.\nconst loopItem = $('Loop Over Items').first().json;\nconst transcriptBody = items[0].json.body;\n\nconst rawContent = transcriptBody.content || '';\nconst trimmedContent = rawContent.slice(0, 40000);\nconst lang = transcriptBody.lang || null;\n\nreturn [{\n  json: {\n    videoId: loopItem.videoId,\n    title: loopItem.title,\n    url: loopItem.url,\n    lang: lang,\n    trimmedContent: trimmedContent\n  }\n}];"
+        "jsCode": "// Trim transcript to ≤ 40000 chars before sending to Ollama (heuristic for num_ctx=16k tokens)\n// Also carry forward videoId, title, url, lang from the loop item and transcript response.\nconst loopItem = $('Loop Over Items').first().json;\nconst transcriptBody = $input.first().json.body;\n\nconst rawContent = transcriptBody.content || '';\nconst trimmedContent = rawContent.slice(0, 40000);\nconst lang = transcriptBody.lang || null;\n\nreturn [{\n  json: {\n    videoId: loopItem.videoId,\n    title: loopItem.title,\n    url: loopItem.url,\n    lang: lang,\n    trimmedContent: trimmedContent\n  }\n}];"
       },
       "id": "d0e1f2a3-b4c5-6789-defa-890123456789",
       "name": "Code - Trim Transcript",
@@ -192,7 +192,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse Ollama JSON response. On failure, fall back to raw text split into lines.\nconst prevItem = $('Code - Trim Transcript').first().json;\nconst rawResponse = items[0].json.message && items[0].json.message.content\n  ? items[0].json.message.content\n  : '';\n\nlet main_idea, summary;\ntry {\n  const parsed = JSON.parse(rawResponse);\n  main_idea = parsed.main_idea || '';\n  summary = Array.isArray(parsed.summary) ? parsed.summary : [];\n} catch (e) {\n  // Fallback: first sentence as main_idea, first 10 lines as summary\n  const lines = rawResponse.split('\\n').map(l => l.trim()).filter(Boolean);\n  summary = lines.slice(0, 10);\n  main_idea = lines[0] ? lines[0].split('.')[0] + '.' : 'Не удалось распарсить ответ.';\n}\n\nreturn [{\n  json: {\n    videoId: prevItem.videoId,\n    title: prevItem.title,\n    url: prevItem.url,\n    lang: prevItem.lang,\n    main_idea: main_idea,\n    summary: summary\n  }\n}];"
+        "jsCode": "// Parse Ollama JSON response. On failure, fall back to raw text split into lines.\nconst prevItem = $('Code - Trim Transcript').first().json;\nconst inJson = $input.first().json;\nconst rawResponse = inJson.message && inJson.message.content\n  ? inJson.message.content\n  : '';\n\nlet main_idea, summary;\ntry {\n  const parsed = JSON.parse(rawResponse);\n  main_idea = parsed.main_idea || '';\n  summary = Array.isArray(parsed.summary) ? parsed.summary : [];\n} catch (e) {\n  // Fallback: first sentence as main_idea, first 10 lines as summary\n  const lines = rawResponse.split('\\n').map(l => l.trim()).filter(Boolean);\n  summary = lines.slice(0, 10);\n  main_idea = lines[0] ? lines[0].split('.')[0] + '.' : 'Не удалось распарсить ответ.';\n}\n\nreturn [{\n  json: {\n    videoId: prevItem.videoId,\n    title: prevItem.title,\n    url: prevItem.url,\n    lang: prevItem.lang,\n    main_idea: main_idea,\n    summary: summary\n  }\n}];"
       },
       "id": "f2a3b4c5-d6e7-8901-fabc-012345678901",
       "name": "Code - Parse Ollama Response",
@@ -202,7 +202,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// HTML-escape title, main_idea, and each summary bullet, then compose Telegram message.\nfunction escapeHtml(str) {\n  if (typeof str !== 'string') str = String(str || '');\n  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst { videoId, title, url, main_idea, summary } = items[0].json;\n\nconst escapedTitle = escapeHtml(title);\nconst escapedMainIdea = escapeHtml(main_idea);\nconst bulletLines = Array.isArray(summary)\n  ? summary.map(s => `• ${escapeHtml(s)}`).join('\\n')\n  : '';\n\nconst text = `<b>${escapedTitle}</b>\\n<a href=\"https://youtu.be/${videoId}\">Смотреть на YouTube</a>\\n\\n📌 <b>Главная идея</b>\\n${escapedMainIdea}\\n\\n📝 <b>Обзор</b>\\n${bulletLines}`;\n\nreturn [{\n  json: {\n    videoId: videoId,\n    title: title,\n    url: url,\n    lang: items[0].json.lang,\n    text: text\n  }\n}];"
+        "jsCode": "// HTML-escape title, main_idea, and each summary bullet, then compose Telegram message.\nfunction escapeHtml(str) {\n  if (typeof str !== 'string') str = String(str || '');\n  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst inJson = $input.first().json;\nconst { videoId, title, url, main_idea, summary } = inJson;\n\nconst escapedTitle = escapeHtml(title);\nconst escapedMainIdea = escapeHtml(main_idea);\nconst bulletLines = Array.isArray(summary)\n  ? summary.map(s => `• ${escapeHtml(s)}`).join('\\n')\n  : '';\n\nconst text = `<b>${escapedTitle}</b>\\n<a href=\"https://youtu.be/${videoId}\">Смотреть на YouTube</a>\\n\\n📌 <b>Главная идея</b>\\n${escapedMainIdea}\\n\\n📝 <b>Обзор</b>\\n${bulletLines}`;\n\nreturn [{\n  json: {\n    videoId: videoId,\n    title: title,\n    url: url,\n    lang: inJson.lang,\n    text: text\n  }\n}];"
       },
       "id": "a3b4c5d6-e7f8-9012-abcd-123456789012",
       "name": "Code - Format Telegram Message",
@@ -233,7 +233,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Mark video as processed with status 'summarized' in SQLite.\nconst Database = require('better-sqlite3');\nconst db = new Database('/home/node/.n8n/state.db');\nconst stmt = db.prepare(`INSERT OR REPLACE INTO processed_videos\n  (video_id, title, status, lang) VALUES (?, ?, ?, ?)`);\nfor (const item of items) {\n  stmt.run(item.json.videoId, item.json.title, 'summarized', item.json.lang || null);\n}\nreturn items;"
+        "jsCode": "// Mark video as processed with status 'summarized' in workflow staticData.\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.processed) staticData.processed = {};\nconst items = $input.all();\nfor (const item of items) {\n  staticData.processed[item.json.videoId] = {\n    title: item.json.title,\n    status: 'summarized',\n    lang: item.json.lang || null,\n    processedAt: new Date().toISOString()\n  };\n}\nreturn items;"
       },
       "id": "c5d6e7f8-a9b0-1234-cdef-345678901234",
       "name": "Code - Mark Processed Summarized",
@@ -274,7 +274,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Mark video as processed with status 'no_transcript' in SQLite.\nconst Database = require('better-sqlite3');\nconst db = new Database('/home/node/.n8n/state.db');\nconst stmt = db.prepare(`INSERT OR REPLACE INTO processed_videos\n  (video_id, title, status, lang) VALUES (?, ?, ?, ?)`);\nfor (const item of items) {\n  stmt.run(item.json.videoId, item.json.title, 'no_transcript', null);\n}\nreturn items;"
+        "jsCode": "// Mark video as processed with status 'no_transcript' in workflow staticData.\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.processed) staticData.processed = {};\nconst items = $input.all();\nfor (const item of items) {\n  staticData.processed[item.json.videoId] = {\n    title: item.json.title,\n    status: 'no_transcript',\n    lang: null,\n    processedAt: new Date().toISOString()\n  };\n}\nreturn items;"
       },
       "id": "f8a9b0c1-d2e3-4567-fabc-678901234567",
       "name": "Code - Mark Processed No Transcript",
@@ -347,14 +347,14 @@
       "main": [
         [
           {
-            "node": "Code - Filter New via SQLite",
+            "node": "Code - Filter New",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code - Filter New via SQLite": {
+    "Code - Filter New": {
       "main": [
         [
           {

@@ -1,8 +1,5 @@
 services:
   n8n:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: yt-summary-n8n:local
     restart: unless-stopped
     ports: ["5678:5678"]
@@ -16,8 +13,6 @@ services:
       - GENERIC_TIMEZONE=${TZ:-Europe/Moscow}
       - TZ=${TZ:-Europe/Moscow}
       - N8N_SECURE_COOKIE=false
-      # required so Code nodes can require('better-sqlite3') for the SQLite state file
-      - NODE_FUNCTION_ALLOW_EXTERNAL=better-sqlite3
     volumes:
       - n8n-data:/home/node/.n8n
     depends_on:
