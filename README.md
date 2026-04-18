@@ -68,14 +68,16 @@ cp .env.example .env
 ## Запуск
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
+
+Флаг `--build` нужен только при первом запуске (или после изменения `Dockerfile`) — локально собирается образ `yt-summary-n8n:local` поверх `n8nio/n8n:latest` с глобально установленным `better-sqlite3` (используется Code-нодами для дедупликации).
 
 При первом старте:
 
 1. `ollama` запускается с доступом к GPU.
 2. `ollama-init` однократно скачивает модель (~9 GB) — первый запуск займёт несколько минут в зависимости от канала.
-3. `n8n` стартует после того, как `ollama` прошёл healthcheck.
+3. `n8n` стартует после того, как `ollama` прошёл healthcheck. Состояние n8n хранится в docker-managed named volume `yt-summary_n8n-data` (владелец/права настраиваются автоматически — ничего руками делать не нужно).
 
 Открыть [http://localhost:5678](http://localhost:5678) и создать учётную запись владельца.
 
@@ -124,7 +126,21 @@ docker compose up -d
 Проверить, что `nvidia-ctk runtime configure --runtime=docker` выполнен и Docker перезапущен. Верифицировать: `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`.
 
 **`better-sqlite3` не грузится в Code node**
-Убедиться, что переменная `NODE_FUNCTION_ALLOW_EXTERNAL=better-sqlite3` прокинута в сервис `n8n` в `docker-compose.yml` (там уже есть — проверить, что файл не был изменён).
+Модуль устанавливается в кастомный образ `yt-summary-n8n:local` из `Dockerfile`. Убедиться, что: (1) образ пересобран после изменений в `Dockerfile` — `docker compose build n8n`; (2) в `docker-compose.yml` переменная `NODE_FUNCTION_ALLOW_EXTERNAL=better-sqlite3` на месте (allowlist n8n).
+
+**Бэкап / восстановление состояния n8n**
+Данные лежат в docker-managed volume, а не в папке проекта. Бэкап:
+```bash
+docker run --rm -v yt-summary_n8n-data:/d -v "$(pwd)":/b alpine tar czf /b/n8n-backup.tgz -C /d .
+```
+Восстановление:
+```bash
+docker compose down
+docker volume rm yt-summary_n8n-data
+docker volume create yt-summary_n8n-data
+docker run --rm -v yt-summary_n8n-data:/d -v "$(pwd)":/b alpine tar xzf /b/n8n-backup.tgz -C /d
+docker compose up -d
+```
 
 **Ollama OOM / "model requires more system memory"**
 Переопределить модель в `.env`: `OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M`, затем `docker compose restart`. `ollama-init` подтянет новую модель автоматически (повторный pull).
@@ -146,6 +162,7 @@ docker compose up -d
 
 ```
 yt-summary/
+├── Dockerfile                    # кастомный образ n8n + better-sqlite3
 ├── docker-compose.yml
 ├── .env.example
 ├── .env                          # локальный, в .gitignore
@@ -156,7 +173,8 @@ yt-summary/
 │   └── yt-summary-on-error.json
 ├── ollama/
 │   └── init-model.sh
-└── data/                         # bind-volumes, в .gitignore
-    ├── n8n/
+└── data/                         # bind-volume только для ollama (модели)
     └── ollama/
 ```
+
+Состояние n8n хранится в docker-managed named volume `yt-summary_n8n-data` — не в каталоге проекта. Список volumes: `docker volume ls | grep yt-summary`.
