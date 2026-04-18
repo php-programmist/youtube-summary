@@ -1,2 +1,17 @@
 .env
 .idea
+.idea/
+.vscode/
+
+# bind-mount volume data — never commit
+data/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node (just in case)
+node_modules/
