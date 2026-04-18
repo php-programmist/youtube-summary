@@ -29,7 +29,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://www.youtube.com/feeds/videos.xml?playlist_id={{$env.YOUTUBE_PLAYLIST_ID}}",
+        "url": "=https://www.youtube.com/feeds/videos.xml?playlist_id={{$env.YOUTUBE_PLAYLIST_ID}}",
         "options": {
           "response": {
             "response": {

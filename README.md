@@ -83,20 +83,21 @@ docker compose up -d --build
 
 ## Импорт workflow'ов
 
-1. В n8n: **Settings → Workflows → Import from file**.
+1. В n8n: нажать "+" → Workflows → "..." → Import from file .
 2. Импортировать `workflows/yt-summary-hourly.json`.
 3. Импортировать `workflows/yt-summary-on-error.json`.
 
 ### Credentials
 
-Создать credential типа **Telegram**:
+Создать credential типа **Telegram API**:
 
-- Имя: `Telegram Bot` (именно так — совпадает с именем в JSON; если используете другое имя, переназначьте credential во всех Telegram-узлах вручную).
 - Поле **Access Token**: значение `TELEGRAM_BOT_TOKEN`.
 
 ### Связать error workflow
 
-В настройках `yt-summary-hourly` → вкладка **Settings** → поле **Error Workflow** → выбрать `yt-summary-on-error`.
+Открыть `yt-summary-on-error` и нажать кнопку "Publish". Без этого не получится его выбрать в качестве error workflow.
+
+В настройках `yt-summary-hourly` → "..." → **Settings** → поле **Error Workflow** → выбрать `yt-summary-on-error`.
 
 ### Активировать
 

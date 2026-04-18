@@ -6,10 +6,13 @@ services:
     image: yt-summary-n8n:local
     restart: unless-stopped
     ports: ["5678:5678"]
+    env_file:
+      - .env
     environment:
       - N8N_HOST=${N8N_HOST:-localhost}
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       - GENERIC_TIMEZONE=${TZ:-Europe/Moscow}
       - TZ=${TZ:-Europe/Moscow}
       - N8N_SECURE_COOKIE=false
