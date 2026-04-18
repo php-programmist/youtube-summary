@@ -177,22 +177,35 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://ollama:11434/api/chat",
-        "sendBody": true,
-        "contentType": "json",
-        "body": "={\n  \"model\": \"{{$env.OLLAMA_MODEL}}\",\n  \"stream\": false,\n  \"format\": \"json\",\n  \"keep_alive\": \"{{$env.OLLAMA_KEEP_ALIVE_ACTIVE}}\",\n  \"options\": { \"temperature\": 0.3, \"num_ctx\": 16384 },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Ты ассистент, который кратко пересказывает видео на YouTube по его субтитрам.\\nВсегда отвечай на русском языке.\\nВерни ТОЛЬКО JSON вида:\\n{\\\"main_idea\\\": \\\"<1-2 предложения с главной идеей>\\\", \\\"summary\\\": [\\\"пункт 1\\\", \\\"пункт 2\\\", ...]}\\nТребования:\\n- 8-12 пунктов в summary;\\n- каждый пункт ≤ 120 символов, законченная мысль;\\n- без вступлений, без markdown, только JSON.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Название: {{$json.title}}\\n\\nСубтитры:\\n{{$json.trimmedContent}}\"\n    }\n  ]\n}",
-        "options": {}
+        "jsCode": "// Build Ollama /api/chat payload with JSON Schema enforcement.\n// LangChain Ollama node не умеет передавать format=schema, поэтому шлём через HTTP Request напрямую.\nconst item = $input.first().json;\n\nconst systemPrompt = `Ты ассистент, который делает подробный пересказ видео на YouTube по его субтитрам.\nВсегда отвечай на русском языке.\nВерни ТОЛЬКО валидный JSON со структурой:\n{\"main_idea\": \"строка\", \"summary\": [\"пункт 1\", \"пункт 2\", \"пункт 3\", ...]}\n\nЖёсткие требования к содержанию:\n- В массиве summary ОБЯЗАТЕЛЬНО от 10 до 15 элементов. Меньше 10 — НЕДОПУСТИМО.\n- Каждый элемент — законченное предложение длиной 100-200 символов с конкретикой: названия инструментов и сервисов, шаги, цифры, цены, технологии, имена.\n- Покрой все ключевые этапы видео последовательно: что делает автор, какими инструментами пользуется, какие нюансы и советы даёт, какой итог.\n- Никаких вступительных фраз вроде \"В видео автор...\". Никакого markdown, никаких \\`\\`\\`json. Только сырой JSON.`;\n\nconst userPrompt = `Название: ${item.title}\\n\\nСубтитры:\\n${item.trimmedContent}\\n\\nНапоминание: верни JSON с массивом summary из 10-15 подробных пунктов (по 100-200 символов), с конкретными названиями инструментов, шагами и цифрами.`;\n\nconst payload = {\n  model: $env.OLLAMA_MODEL,\n  stream: false,\n  keep_alive: $env.OLLAMA_KEEP_ALIVE_ACTIVE,\n  format: {\n    type: 'object',\n    properties: {\n      main_idea: { type: 'string' },\n      summary: {\n        type: 'array',\n        items: { type: 'string' },\n        minItems: 10,\n        maxItems: 15\n      }\n    },\n    required: ['main_idea', 'summary']\n  },\n  options: {\n    temperature: 0.3,\n    num_ctx: 32768,\n    num_predict: 2000,\n    repeat_penalty: 1.3\n  },\n  messages: [\n    { role: 'system', content: systemPrompt },\n    { role: 'user', content: userPrompt }\n  ]\n};\n\nreturn [{\n  json: {\n    videoId: item.videoId,\n    title: item.title,\n    url: item.url,\n    lang: item.lang,\n    payload: payload\n  }\n}];"
       },
       "id": "e1f2a3b4-c5d6-7890-efab-901234567890",
-      "name": "HTTP Request - Ollama Chat",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "name": "Code - Build Ollama Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1980, 200]
     },
     {
       "parameters": {
-        "jsCode": "// Parse Ollama JSON response. On failure, fall back to raw text split into lines.\nconst prevItem = $('Code - Trim Transcript').first().json;\nconst inJson = $input.first().json;\nconst rawResponse = inJson.message && inJson.message.content\n  ? inJson.message.content\n  : '';\n\nlet main_idea, summary;\ntry {\n  const parsed = JSON.parse(rawResponse);\n  main_idea = parsed.main_idea || '';\n  summary = Array.isArray(parsed.summary) ? parsed.summary : [];\n} catch (e) {\n  // Fallback: first sentence as main_idea, first 10 lines as summary\n  const lines = rawResponse.split('\\n').map(l => l.trim()).filter(Boolean);\n  summary = lines.slice(0, 10);\n  main_idea = lines[0] ? lines[0].split('.')[0] + '.' : 'Не удалось распарсить ответ.';\n}\n\nreturn [{\n  json: {\n    videoId: prevItem.videoId,\n    title: prevItem.title,\n    url: prevItem.url,\n    lang: prevItem.lang,\n    main_idea: main_idea,\n    summary: summary\n  }\n}];"
+        "method": "POST",
+        "url": "http://ollama:11434/api/chat",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "c1f2a3b4-c5d6-7890-efab-111111111111",
+      "name": "HTTP Request - Ollama Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2090, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Ollama /api/chat response. format=schema гарантирует валидный JSON, но на всякий случай — фоллбек.\nconst prevItem = $('Code - Build Ollama Request').first().json;\nconst inJson = $input.first().json;\nconst rawResponse = (inJson.message && inJson.message.content) || inJson.response || '';\n\nlet main_idea, summary;\ntry {\n  const parsed = JSON.parse(rawResponse);\n  main_idea = parsed.main_idea || '';\n  summary = Array.isArray(parsed.summary) ? parsed.summary : [];\n} catch (e) {\n  const lines = rawResponse.split('\\n').map(l => l.trim()).filter(Boolean);\n  summary = lines.slice(0, 10);\n  main_idea = lines[0] ? lines[0].split('.')[0] + '.' : 'Не удалось распарсить ответ.';\n}\n\nreturn [{\n  json: {\n    videoId: prevItem.videoId,\n    title: prevItem.title,\n    url: prevItem.url,\n    lang: prevItem.lang,\n    main_idea: main_idea,\n    summary: summary\n  }\n}];"
       },
       "id": "f2a3b4c5-d6e7-8901-fabc-012345678901",
       "name": "Code - Parse Ollama Response",
@@ -215,6 +228,7 @@
         "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
         "text": "={{$json.text}}",
         "additionalFields": {
+          "appendAttribution": false,
           "parse_mode": "HTML",
           "disable_web_page_preview": false
         }
@@ -256,6 +270,7 @@
         "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
         "text": "=Субтитров нет: <a href=\"https://youtu.be/{{$json.videoId}}\">{{$json.title}}</a>",
         "additionalFields": {
+          "appendAttribution": false,
           "parse_mode": "HTML",
           "disable_web_page_preview": false
         }
@@ -288,7 +303,8 @@
         "url": "http://ollama:11434/api/chat",
         "sendBody": true,
         "contentType": "json",
-        "body": "={\"model\": \"{{$env.OLLAMA_MODEL}}\", \"messages\": [], \"keep_alive\": 0}",
+        "specifyBody": "json",
+        "jsonBody": "={\"model\": \"{{$env.OLLAMA_MODEL}}\", \"messages\": [], \"keep_alive\": 0}",
         "options": {}
       },
       "id": "a9b0c1d2-e3f4-5678-abcd-789012345678",
@@ -413,6 +429,17 @@
       ]
     },
     "Code - Trim Transcript": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Ollama Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Ollama Request": {
       "main": [
         [
           {

@@ -22,6 +22,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"  # локальный доступ для отладочных скриптов
     volumes:
       - ./data/ollama:/root/.ollama
     environment:

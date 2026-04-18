@@ -89,7 +89,7 @@ docker compose up -d --build
 
 ### Credentials
 
-Создать credential типа **Telegram API**:
+#### Создать credential типа **Telegram API**:
 
 - Поле **Access Token**: значение `TELEGRAM_BOT_TOKEN`.
 
