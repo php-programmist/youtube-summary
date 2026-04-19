@@ -50,7 +50,7 @@ services:
         condition: service_healthy
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b-instruct-q4_K_M}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e4b}
     # $${OLLAMA_MODEL}: doubled $$ so compose does not interpolate; shell inside container resolves it
     entrypoint: ["/bin/sh", "-c", "ollama pull $${OLLAMA_MODEL}"]
     restart: "no"
