@@ -105,6 +105,47 @@ def build_user_prompt(title: str, content: str) -> str:
     )
 
 
+# === SECTION: METRICS ===
+
+def compute_formal_metrics(raw: str) -> dict:
+    """Формальные проверки ответа модели.
+
+    Возвращает dict со всеми ключами всегда (даже при невалидном JSON),
+    чтобы downstream-код не падал на отсутствующих полях.
+    """
+    out = {
+        "json_valid": False,
+        "has_required_fields": False,
+        "summary_count": 0,
+        "count_in_range": False,
+        "too_short": 0,
+        "too_long": 0,
+        "length_ok_ratio": 0.0,
+    }
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return out
+    out["json_valid"] = True
+    if not isinstance(parsed, dict):
+        return out
+    main_idea = parsed.get("main_idea")
+    summary = parsed.get("summary")
+    if not isinstance(main_idea, str) or not isinstance(summary, list):
+        return out
+    out["has_required_fields"] = True
+    out["summary_count"] = len(summary)
+    out["count_in_range"] = 10 <= len(summary) <= 15
+    if not summary:
+        return out
+    str_items = [s for s in summary if isinstance(s, str)]
+    out["too_short"] = sum(1 for s in str_items if len(s) < 100)
+    out["too_long"] = sum(1 for s in str_items if len(s) > 200)
+    in_range = sum(1 for s in str_items if 100 <= len(s) <= 200)
+    out["length_ok_ratio"] = in_range / len(summary)
+    return out
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0

@@ -6,6 +6,7 @@
   cd scripts && python3 -m unittest test_benchmark_ollama -v
 """
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -67,6 +68,60 @@ class TestTranscriptHelpers(unittest.TestCase):
         self.assertIn("Название: My Video", prompt)
         self.assertIn("Some content", prompt)
         self.assertIn("10-15", prompt)
+
+
+class TestFormalMetrics(unittest.TestCase):
+    def _good(self):
+        return {
+            "main_idea": "О чём видео",
+            "summary": ["A" * 150 for _ in range(12)],
+        }
+
+    def test_perfect_response(self):
+        m = bench.compute_formal_metrics(json.dumps(self._good()))
+        self.assertTrue(m["json_valid"])
+        self.assertTrue(m["has_required_fields"])
+        self.assertEqual(m["summary_count"], 12)
+        self.assertTrue(m["count_in_range"])
+        self.assertEqual(m["too_short"], 0)
+        self.assertEqual(m["too_long"], 0)
+        self.assertEqual(m["length_ok_ratio"], 1.0)
+
+    def test_invalid_json(self):
+        m = bench.compute_formal_metrics("{not json")
+        self.assertFalse(m["json_valid"])
+        self.assertFalse(m["has_required_fields"])
+        self.assertEqual(m["summary_count"], 0)
+        self.assertFalse(m["count_in_range"])
+        self.assertEqual(m["length_ok_ratio"], 0.0)
+
+    def test_missing_summary(self):
+        m = bench.compute_formal_metrics(json.dumps({"main_idea": "x"}))
+        self.assertTrue(m["json_valid"])
+        self.assertFalse(m["has_required_fields"])
+        self.assertEqual(m["summary_count"], 0)
+
+    def test_count_out_of_range(self):
+        d = {"main_idea": "x", "summary": ["A" * 150 for _ in range(5)]}
+        m = bench.compute_formal_metrics(json.dumps(d))
+        self.assertEqual(m["summary_count"], 5)
+        self.assertFalse(m["count_in_range"])
+
+    def test_mixed_lengths(self):
+        d = {
+            "main_idea": "x",
+            "summary": ["A" * 50] * 2 + ["A" * 150] * 8 + ["A" * 250] * 2,
+        }
+        m = bench.compute_formal_metrics(json.dumps(d))
+        self.assertEqual(m["too_short"], 2)
+        self.assertEqual(m["too_long"], 2)
+        self.assertEqual(m["length_ok_ratio"], 8 / 12)
+
+    def test_summary_not_list(self):
+        d = {"main_idea": "x", "summary": "not a list"}
+        m = bench.compute_formal_metrics(json.dumps(d))
+        self.assertFalse(m["has_required_fields"])
+        self.assertEqual(m["summary_count"], 0)
 
 
 if __name__ == "__main__":
