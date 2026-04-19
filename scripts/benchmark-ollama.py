@@ -146,6 +146,43 @@ def compute_formal_metrics(raw: str) -> dict:
     return out
 
 
+# Слово с заглавной латинской буквой длиной >2 (для детекта proper nouns).
+# Кириллица намеренно не включена — для русского текста заглавная буква
+# часто означает просто начало предложения, не имя собственное.
+_PROPER_NOUN_RE = re.compile(r"\b[A-Z][a-zA-Z]{2,}\b")
+_DIGIT_RE = re.compile(r"\d")
+
+
+def keyword_coverage(summary: list[str], keywords: list[str]) -> float:
+    if not summary or not keywords:
+        return 0.0
+    blob = " ".join(s for s in summary if isinstance(s, str)).lower()
+    hits = sum(1 for kw in keywords if kw.lower() in blob)
+    return hits / len(keywords)
+
+
+def specificity_ratio(summary: list[str]) -> float:
+    if not summary:
+        return 0.0
+    str_items = [s for s in summary if isinstance(s, str)]
+    if not str_items:
+        return 0.0
+    specific = sum(
+        1 for s in str_items
+        if _DIGIT_RE.search(s) or _PROPER_NOUN_RE.search(s)
+    )
+    return specific / len(str_items)
+
+
+def duplicate_summary_keys(raw: str) -> int:
+    """Считает вхождения паттерна `"summary"` в сыром JSON-тексте.
+
+    >1 — модель сгенерировала повторяющийся ключ (известная патология,
+    второй ключ при стандартным json.loads перезаписывает первый — теряется data).
+    """
+    return raw.count('"summary"')
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0

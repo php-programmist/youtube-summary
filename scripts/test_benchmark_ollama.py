@@ -124,5 +124,44 @@ class TestFormalMetrics(unittest.TestCase):
         self.assertEqual(m["summary_count"], 0)
 
 
+class TestContentHeuristics(unittest.TestCase):
+    def test_keyword_coverage_full(self):
+        summary = [
+            "Использовали Claude Code и Vercel для деплоя.",
+            "Открыли Visual Studio Code и поставили GitHub.",
+        ]
+        cov = bench.keyword_coverage(summary, ["Claude Code", "Vercel", "GitHub", "VS Code"])
+        # 3 из 4 (VS Code не встречается, Visual Studio Code не равно VS Code)
+        self.assertAlmostEqual(cov, 0.75, places=2)
+
+    def test_keyword_coverage_case_insensitive(self):
+        cov = bench.keyword_coverage(["claude code rocks"], ["Claude Code"])
+        self.assertEqual(cov, 1.0)
+
+    def test_keyword_coverage_empty_summary(self):
+        self.assertEqual(bench.keyword_coverage([], ["X"]), 0.0)
+
+    def test_keyword_coverage_empty_keywords(self):
+        self.assertEqual(bench.keyword_coverage(["text"], []), 0.0)
+
+    def test_specificity_with_digits(self):
+        items = ["Стоимость 25 долларов в месяц.", "Просто текст без ничего."]
+        ratio = bench.specificity_ratio(items)
+        self.assertEqual(ratio, 0.5)
+
+    def test_specificity_with_proper_nouns(self):
+        items = ["Использовали Claude для работы.", "обычный текст без названий"]
+        ratio = bench.specificity_ratio(items)
+        self.assertEqual(ratio, 0.5)
+
+    def test_specificity_empty(self):
+        self.assertEqual(bench.specificity_ratio([]), 0.0)
+
+    def test_duplicate_summary_keys(self):
+        raw = '{"summary": ["a"], "main_idea": "x", "summary": ["b"]}'
+        self.assertEqual(bench.duplicate_summary_keys(raw), 2)
+        self.assertEqual(bench.duplicate_summary_keys('{"summary": []}'), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
