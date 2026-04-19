@@ -316,6 +316,52 @@ def ollama_pull(base_url: str, model: str,
         raise OllamaError(f"pull {model}: stream ended without success (last={last})")
 
 
+def ollama_unload(base_url: str, model: str, timeout: float = 60) -> bool:
+    """Выгружает модель через keep_alive=0 + поллит /api/ps до пропадания.
+
+    Возвращает True если модель выгружена в пределах timeout, иначе False.
+    """
+    # Шаг 1: послать запрос с keep_alive=0
+    try:
+        _http_post(
+            f"{base_url}/api/chat",
+            {
+                "model": model,
+                "stream": False,
+                "keep_alive": 0,
+                "messages": [{"role": "user", "content": "."}],
+            },
+            timeout=30,
+        )
+    except OllamaError:
+        # Модель может уже быть не в памяти — это ок
+        pass
+
+    # Шаг 2: поллить /api/ps
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            loaded = ollama_ps(base_url)
+        except OllamaError:
+            return False
+        if not any(m.get("name") == model or m.get("model") == model for m in loaded):
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def ollama_unload_all(base_url: str, timeout: float = 60) -> None:
+    """Выгружает все загруженные сейчас модели (используется в pre-run check)."""
+    try:
+        loaded = ollama_ps(base_url)
+    except OllamaError:
+        return
+    for m in loaded:
+        name = m.get("name") or m.get("model")
+        if name:
+            ollama_unload(base_url, name, timeout=timeout)
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0
