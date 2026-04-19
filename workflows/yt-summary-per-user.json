@@ -138,25 +138,7 @@
         [
           {
             "index": 0,
-            "node": "IF - Has Transcript",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "IF - Has Transcript": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Trim Transcript",
-            "type": "main"
-          }
-        ],
-        [
-          {
-            "index": 0,
-            "node": "Code - Prepare No Transcript",
+            "node": "Switch - Transcript Result",
             "type": "main"
           }
         ]
@@ -180,6 +162,31 @@
         ]
       ]
     },
+    "Switch - Transcript Result": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Code - Trim Transcript",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Telegram - Transcript Retry",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Code - Prepare No Transcript",
+            "type": "main"
+          }
+        ]
+      ]
+    },
     "Telegram - No Transcript": {
       "main": [
         [
@@ -197,6 +204,28 @@
           {
             "index": 0,
             "node": "Code - Mark Processed Summarized",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Telegram - Transcript Retry": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Loop Over Items",
             "type": "main"
           }
         ]
@@ -345,51 +374,94 @@
       },
       "position": [
         1184,
-        3824
+        3936
       ],
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2
     },
     {
       "id": "a0000001-0000-0000-0000-000000000008",
-      "name": "IF - Has Transcript",
+      "name": "Switch - Transcript Result",
       "parameters": {
-        "conditions": {
-          "combinator": "and",
-          "conditions": [
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "noTranscript"
+        },
+        "rules": {
+          "values": [
             {
-              "id": "cond-status-200",
-              "leftValue": "={{$json.statusCode}}",
-              "operator": {
-                "operation": "equals",
-                "type": "number"
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-has-transcript-status",
+                    "leftValue": "={{$json.statusCode}}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "number"
+                    },
+                    "rightValue": 200
+                  },
+                  {
+                    "id": "cond-has-transcript-content",
+                    "leftValue": "={{$json.body && $json.body.content ? $json.body.content.length : 0}}",
+                    "operator": {
+                      "operation": "gt",
+                      "type": "number"
+                    },
+                    "rightValue": 0
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
               },
-              "rightValue": 200
+              "outputKey": "hasTranscript",
+              "renameOutput": true
             },
             {
-              "id": "cond-content-nonempty",
-              "leftValue": "={{$json.body && $json.body.content ? $json.body.content.length : 0}}",
-              "operator": {
-                "operation": "gt",
-                "type": "number"
+              "conditions": {
+                "combinator": "or",
+                "conditions": [
+                  {
+                    "id": "cond-retry-5xx",
+                    "leftValue": "={{$json.statusCode}}",
+                    "operator": {
+                      "operation": "gte",
+                      "type": "number"
+                    },
+                    "rightValue": 500
+                  },
+                  {
+                    "id": "cond-retry-429",
+                    "leftValue": "={{$json.statusCode}}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "number"
+                    },
+                    "rightValue": 429
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
               },
-              "rightValue": 0
+              "outputKey": "retryable",
+              "renameOutput": true
             }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          }
-        },
-        "options": {}
+          ]
+        }
       },
       "position": [
-        1408,
-        3824
+        1376,
+        3920
       ],
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2
     },
     {
       "id": "a0000001-0000-0000-0000-000000000009",
@@ -509,8 +581,8 @@
         "jsCode": "// Carry forward videoId, title, url, lang from the loop item for the 'no transcript' path.\nconst loopItem = $('Loop Over Items').first().json;\nreturn [{\n  json: {\n    videoId: loopItem.videoId,\n    title: loopItem.title,\n    url: loopItem.url,\n    lang: null\n  }\n}];"
       },
       "position": [
-        1616,
-        3936
+        1696,
+        4240
       ],
       "type": "n8n-nodes-base.code",
       "typeVersion": 2
@@ -534,8 +606,8 @@
         "text": "=Субтитров нет: <a href=\"https://youtu.be/{{$json.videoId}}\">{{$json.title}}</a>"
       },
       "position": [
-        1840,
-        3936
+        1904,
+        4240
       ],
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -548,11 +620,37 @@
         "jsCode": "const fs = require('fs');\nconst STATE_DIR = '/workflows/state';\nconst STATE_PATH = STATE_DIR + '/processed.json';\nlet processed = {};\ntry { processed = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch (e) {}\nconst ref = $('Code - Prepare No Transcript').item.json;\nprocessed[ref.videoId] = ref.title;\nfs.mkdirSync(STATE_DIR, { recursive: true });\nconst tmp = STATE_PATH + '.tmp';\nfs.writeFileSync(tmp, JSON.stringify(processed, null, 2));\nfs.renameSync(tmp, STATE_PATH);\nreturn $input.all();"
       },
       "position": [
-        2064,
-        3936
+        2080,
+        4240
       ],
       "type": "n8n-nodes-base.code",
       "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "telegramApi": {
+          "id": "a8gRroZ2u2iTGniA",
+          "name": "Telegram account"
+        }
+      },
+      "id": "a0000001-0000-0000-0000-000000000020",
+      "name": "Telegram - Transcript Retry",
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{$('Execute Workflow Trigger').first().json.chatId}}",
+        "text": "=⚠️ Не удалось получить субтитры (Supadata вернул {{$json.statusCode}}): <a href=\"https://youtu.be/{{$('Loop Over Items').item.json.videoId}}\">{{$('Loop Over Items').item.json.title}}</a>. Попробую в следующем цикле."
+      },
+      "position": [
+        1632,
+        3936
+      ],
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "webhookId": "c4e0f8b2-9f1a-4e3c-ae2b-5d7e1234abcd"
     },
     {
       "id": "a0000001-0000-0000-0000-000000000019",
@@ -567,10 +665,25 @@
       },
       "position": [
         1184,
-        4080
+        3712
       ],
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2
+    },
+    {
+      "id": "b70e7334-04de-40bd-bfac-279519dc8049",
+      "name": "Wait",
+      "parameters": {
+        "amount": 1,
+        "unit": "minutes"
+      },
+      "position": [
+        1808,
+        3936
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "e16d725c-c667-4959-ae01-8c137e1dd29c"
     }
   ],
   "pinData": {},
