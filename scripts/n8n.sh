@@ -76,7 +76,9 @@ cmd_activate() {
 }
 
 cmd_activate_all() {
-    "${EXEC[@]}" n8n update:workflow --all --active=true
+    cmd_activate yt-summary-on-error
+    cmd_activate yt-summary-per-user
+    cmd_activate yt-summary-hourly
 }
 
 main() {
