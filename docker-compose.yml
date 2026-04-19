@@ -13,6 +13,7 @@ services:
       - GENERIC_TIMEZONE=${TZ:-Europe/Moscow}
       - TZ=${TZ:-Europe/Moscow}
       - N8N_SECURE_COOKIE=false
+      - NODE_FUNCTION_ALLOW_BUILTIN=fs
     volumes:
       - n8n-data:/home/node/.n8n
       - ./workflows:/workflows

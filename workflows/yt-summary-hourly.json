@@ -315,7 +315,7 @@
       "id": "fd2ca9e2-3a14-4dd5-a283-78a4321b4e2b",
       "name": "Code - Filter New",
       "parameters": {
-        "jsCode": "// Filter out already-processed videos using workflow staticData.\n// State lives in n8n's DB inside this workflow — survives restarts, no external modules.\nconst staticData = $getWorkflowStaticData('global');\nconst processed = staticData.processed || {};\nreturn $input.all().filter(i => !(i.json.videoId in processed));"
+        "jsCode": "const fs = require('fs');\nconst STATE_PATH = '/workflows/state/processed.json';\nlet processed = {};\ntry { processed = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch (e) {}\nreturn $input.all().filter(i => !(i.json.videoId in processed));"
       },
       "position": [
         736,
@@ -524,7 +524,7 @@
       "id": "e6aa87fd-7149-42dc-afdd-cbc7fab61d6d",
       "name": "Code - Mark Processed Summarized",
       "parameters": {
-        "jsCode": "// Mark video as processed with status 'summarized' in workflow staticData.\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.processed) staticData.processed = {};\nconst items = $input.all();\nfor (const item of items) {\n  staticData.processed[item.json.videoId] = {\n    title: item.json.title,\n    status: 'summarized',\n    lang: item.json.lang || null,\n    processedAt: new Date().toISOString()\n  };\n}\nreturn items;"
+        "jsCode": "const fs = require('fs');\nconst STATE_DIR = '/workflows/state';\nconst STATE_PATH = STATE_DIR + '/processed.json';\nlet processed = {};\ntry { processed = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch (e) {}\nconst ref = $('Code - Format Telegram Message').item.json;\nprocessed[ref.videoId] = ref.title;\nfs.mkdirSync(STATE_DIR, { recursive: true });\nconst tmp = STATE_PATH + '.tmp';\nfs.writeFileSync(tmp, JSON.stringify(processed, null, 2));\nfs.renameSync(tmp, STATE_PATH);\nreturn $input.all();"
       },
       "position": [
         2720,
@@ -576,7 +576,7 @@
       "id": "6a9b1d92-f02e-4e61-96e0-c6602b40da62",
       "name": "Code - Mark Processed No Transcript",
       "parameters": {
-        "jsCode": "// Mark video as processed with status 'no_transcript' in workflow staticData.\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.processed) staticData.processed = {};\nconst items = $input.all();\nfor (const item of items) {\n  staticData.processed[item.json.videoId] = {\n    title: item.json.title,\n    status: 'no_transcript',\n    lang: null,\n    processedAt: new Date().toISOString()\n  };\n}\nreturn items;"
+        "jsCode": "const fs = require('fs');\nconst STATE_DIR = '/workflows/state';\nconst STATE_PATH = STATE_DIR + '/processed.json';\nlet processed = {};\ntry { processed = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch (e) {}\nconst ref = $('Code - Prepare No Transcript').item.json;\nprocessed[ref.videoId] = ref.title;\nfs.mkdirSync(STATE_DIR, { recursive: true });\nconst tmp = STATE_PATH + '.tmp';\nfs.writeFileSync(tmp, JSON.stringify(processed, null, 2));\nfs.renameSync(tmp, STATE_PATH);\nreturn $input.all();"
       },
       "position": [
         2064,

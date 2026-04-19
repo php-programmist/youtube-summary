@@ -15,6 +15,16 @@ set +a
 
 : "${OLLAMA_MODEL:?OLLAMA_MODEL must be set in .env}"
 
+echo "▸ Preparing workflows/state..."
+mkdir -p workflows/state
+[ -f workflows/state/processed.json ] || echo "{}" > workflows/state/processed.json
+
+case "$(uname -s)" in
+  Linux|Darwin)
+    sudo chown -R 1000:1000 workflows/state
+    ;;
+esac
+
 echo "▸ Starting ollama..."
 docker compose up -d ollama
 
