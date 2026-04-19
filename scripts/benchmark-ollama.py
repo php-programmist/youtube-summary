@@ -214,6 +214,60 @@ def compute_metrics(raw: str, keywords: list[str]) -> dict:
     return m
 
 
+# === SECTION: OLLAMA CLIENT ===
+
+class OllamaError(RuntimeError):
+    pass
+
+
+def _http_post(url: str, payload: dict, timeout: float = 600) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise OllamaError(f"HTTP {e.code} from {url}: {e.read().decode('utf-8', 'replace')}")
+    except urllib.error.URLError as e:
+        raise OllamaError(f"Network error to {url}: {e.reason}")
+
+
+def _http_get(url: str, timeout: float = 30) -> dict:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise OllamaError(f"HTTP {e.code} from {url}")
+    except urllib.error.URLError as e:
+        raise OllamaError(f"Network error to {url}: {e.reason}")
+
+
+def ollama_chat(base_url: str, model: str, messages: list[dict],
+                options: dict, fmt, keep_alive: str = "5m",
+                timeout: float = 600) -> dict:
+    """Один запрос к /api/chat с stream=False. Возвращает полный JSON ответа."""
+    payload = {
+        "model": model,
+        "stream": False,
+        "format": fmt,
+        "keep_alive": keep_alive,
+        "options": options,
+        "messages": messages,
+    }
+    return _http_post(f"{base_url}/api/chat", payload, timeout=timeout)
+
+
+def ollama_ps(base_url: str) -> list[dict]:
+    """Возвращает список загруженных моделей с полями size, size_vram, name."""
+    data = _http_get(f"{base_url}/api/ps")
+    return data.get("models", [])
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0
