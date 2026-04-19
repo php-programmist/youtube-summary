@@ -84,6 +84,27 @@ OLLAMA_OPTIONS = {
 }
 
 
+# === SECTION: TRANSCRIPT ===
+
+def load_transcript(path: Path) -> tuple[str, Optional[str]]:
+    """Загружает транскрипт в формате supadata (list[obj] или obj)."""
+    data = json.loads(path.read_text())
+    if isinstance(data, list):
+        data = data[0]
+    body = data.get("body", data)
+    return body.get("content", ""), body.get("lang")
+
+
+def build_user_prompt(title: str, content: str) -> str:
+    """Идентично test-ollama.py build_user_prompt."""
+    return (
+        f"Название: {title}\n\n"
+        f"Субтитры:\n{content}\n\n"
+        "Напоминание: верни JSON с массивом summary из 10-15 подробных пунктов "
+        "(по 100-200 символов), с конкретными названиями инструментов, шагами и цифрами."
+    )
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0

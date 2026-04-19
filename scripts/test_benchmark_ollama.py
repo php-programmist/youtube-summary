@@ -28,5 +28,46 @@ class TestSkeleton(unittest.TestCase):
         self.assertEqual(bench.JSON_SCHEMA["required"], ["main_idea", "summary"])
 
 
+class TestTranscriptHelpers(unittest.TestCase):
+    def test_load_transcript_list_wrapper(self):
+        # supadata возвращает список с одним объектом, как в transcript.json
+        import json
+        import tempfile
+        from pathlib import Path
+
+        data = [{"body": {"lang": "en", "content": "Hello world"}}]
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            path = Path(f.name)
+        try:
+            content, lang = bench.load_transcript(path)
+            self.assertEqual(content, "Hello world")
+            self.assertEqual(lang, "en")
+        finally:
+            path.unlink()
+
+    def test_load_transcript_plain_object(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        data = {"body": {"lang": "ru", "content": "Привет"}}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            path = Path(f.name)
+        try:
+            content, lang = bench.load_transcript(path)
+            self.assertEqual(content, "Привет")
+            self.assertEqual(lang, "ru")
+        finally:
+            path.unlink()
+
+    def test_build_user_prompt_includes_title_and_content(self):
+        prompt = bench.build_user_prompt("My Video", "Some content")
+        self.assertIn("Название: My Video", prompt)
+        self.assertIn("Some content", prompt)
+        self.assertIn("10-15", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()
