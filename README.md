@@ -11,6 +11,13 @@
 
 ## Prerequisites
 
+### YouTube
+Создать публичный плейлист (или доступный только по ссылке) на YouTube и получить его ID из URL `?list=PLxxxxxxxxxxxxxxx`.
+
+### Telegram
+- Создать бота через @BotFather и получить его токен. 
+- Получить `chat_id` чата/канала для отчётов.
+
 ### Docker
 
 Docker Desktop с включённой WSL Integration или Docker Engine напрямую в WSL.

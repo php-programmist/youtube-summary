@@ -11,7 +11,7 @@
 **Спека:** см. `benchmark-plan.md` в корне репо. Все требования и формат отчётов — оттуда.
 ---
 ## Execution:
-**Subagent-Driven (recommended)** — диспатчить свежий subagent на каждую Task, проверять между ними, быстрая итерация.
+**Subagent-Driven (recommended)** — диспатчить свежий subagent (модель - Sonnet) на каждую Task, проверять между ними, быстрая итерация.
 
 ---
 
@@ -1895,38 +1895,4 @@ git commit -m "Harden benchmark against Ctrl+C and missing models"
 ```
 
 Иначе — пропустить.
-
----
-
-## Self-Review Checklist (перед сдачей плана)
-
-Запускается мной (автором плана) после написания. Найденные проблемы — фиксил inline.
-
-**Spec coverage** (по `benchmark-plan.md`):
-- ✅ Список моделей из плана → DEFAULT_MODELS (Task 1)
-- ✅ Переиспользование промпта/схемы/options из test-ollama.py → Task 1
-- ✅ `format=schema` (JSON_SCHEMA в payload) → Task 6 + Task 11
-- ✅ TRIM_LIMIT=40000 → Task 1
-- ✅ KEYWORDS из плана → Task 1
-- ✅ CLI: --transcript, --runs, --url, --models-file, --output-dir, --quiet → Task 14
-- ✅ `--skip-unload-check` — НЕ реализован (опущен как избыточный, можно добавить если понадобится)
-- ✅ Прогресс-индикатор: TTY+не-TTY, фоновый таймер, формат строк → Task 10
-- ✅ Алгоритм: pre-check → warm-up → 3 runs → unload → next → Task 11
-- ✅ Промежуточное сохранение per-model + общий JSON/MD после каждой модели → Task 11 + Task 14
-- ✅ Метрики качества (все из таблицы) → Task 3+4+5
-- ✅ Метрики ресурсов (load/inference/total/tps/size/vram) → Task 11 (_do_one_run)
-- ✅ nvidia-smi с graceful fallback → Task 9
-- ✅ Unload через keep_alive=0 + поллинг /api/ps → Task 8
-- ✅ JSON отчёт + Markdown с сортировкой и сводкой → Task 13
-- ✅ Auto pull перед каждой моделью → Task 7 + Task 11
-- ✅ LLM-as-judge — НЕ в скрипте (делается оркестратором), `raw_response` сохраняется в каждом run → Task 11
-
-**Placeholder scan:** ни одного TBD/TODO/«implement later» в коде — все шаги содержат полный код.
-
-**Type consistency:**
-- `compute_metrics` возвращает dict с ключами `quality_score`, `keyword_coverage`, `specificity_ratio` и т.д. — те же ключи используются в `aggregate_runs` и `write_markdown_report`.
-- `run_model` возвращает dict с ключами `model`, `status`, `runs`, `aggregated`, `warnings` — те же ключи читает `_write_reports` и `write_markdown_report`.
-- `aggregate_runs` ключи `*_median`, `json_valid_all_runs`, `json_valid_majority` — все используются в writer'е.
-
-**Гэп найден и исправлен:** в раннем драфте `aggregate_runs` не возвращал `size_total_mb_median`, но writer его читает. Добавил в `perf_keys`.
 
