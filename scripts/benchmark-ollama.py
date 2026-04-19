@@ -362,6 +362,71 @@ def ollama_unload_all(base_url: str, timeout: float = 60) -> None:
             ollama_unload(base_url, name, timeout=timeout)
 
 
+# === SECTION: VRAM MONITOR ===
+
+class NvidiaSmiMonitor:
+    """Контекстный менеджер: фоновый поток сэмплит nvidia-smi memory.used.
+
+    Использование:
+        with NvidiaSmiMonitor() as mon:
+            ...inference...
+        peak = mon.peak_mb  # None если nvidia-smi недоступен
+    """
+
+    SAMPLE_INTERVAL = 0.5
+
+    def __init__(self):
+        self.peak_mb: Optional[int] = None
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._available = self._check()
+
+    @staticmethod
+    def _check() -> bool:
+        try:
+            r = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=2,
+            )
+            return r.returncode == 0
+        except (FileNotFoundError, subprocess.SubprocessError):
+            return False
+
+    def _sample_once(self) -> Optional[int]:
+        try:
+            r = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode != 0:
+                return None
+            # Может быть несколько GPU — берём максимум
+            values = [int(line.strip()) for line in r.stdout.splitlines() if line.strip()]
+            return max(values) if values else None
+        except (subprocess.SubprocessError, ValueError):
+            return None
+
+    def _loop(self):
+        while not self._stop.is_set():
+            v = self._sample_once()
+            if v is not None:
+                self.peak_mb = v if self.peak_mb is None else max(self.peak_mb, v)
+            self._stop.wait(self.SAMPLE_INTERVAL)
+
+    def __enter__(self):
+        if self._available:
+            self._stop.clear()
+            self.peak_mb = None
+            self._thread = threading.Thread(target=self._loop, daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        if self._thread:
+            self._stop.set()
+            self._thread.join(timeout=2)
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0
