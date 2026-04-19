@@ -1,169 +1,35 @@
 {
-  "active": false,
+  "active": true,
   "connections": {
-    "Code - Build Ollama Request": {
+    "Code - Load Users": {
       "main": [
         [
           {
             "index": 0,
-            "node": "HTTP Request - Ollama Chat",
+            "node": "Loop Over Users",
             "type": "main"
           }
         ]
       ]
     },
-    "Code - Filter New": {
+    "Execute Workflow": {
       "main": [
         [
           {
             "index": 0,
-            "node": "Loop Over Items",
+            "node": "Loop Over Users",
             "type": "main"
           }
         ]
       ]
     },
-    "Code - Format Telegram Message": {
+    "Loop Over Users": {
       "main": [
+        [],
         [
           {
             "index": 0,
-            "node": "Telegram - Send Summary",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Code - Mark Processed No Transcript": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Loop Over Items",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Code - Mark Processed Summarized": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Loop Over Items",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Code - Normalize List": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Filter New",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Code - Parse Ollama Response": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Format Telegram Message",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Code - Prepare No Transcript": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Telegram - No Transcript",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Code - Trim Transcript": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Build Ollama Request",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "HTTP Request - Ollama Chat": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Parse Ollama Response",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "HTTP Request - RSS Playlist": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "XML",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "HTTP Request - Supadata Transcript": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "IF - Has Transcript",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "IF - Has Transcript": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Trim Transcript",
-            "type": "main"
-          }
-        ],
-        [
-          {
-            "index": 0,
-            "node": "Code - Prepare No Transcript",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Loop Over Items": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "HTTP Request - Ollama Unload",
-            "type": "main"
-          }
-        ],
-        [
-          {
-            "index": 0,
-            "node": "HTTP Request - Supadata Transcript",
+            "node": "Execute Workflow",
             "type": "main"
           }
         ]
@@ -174,7 +40,7 @@
         [
           {
             "index": 0,
-            "node": "HTTP Request - RSS Playlist",
+            "node": "Code - Load Users",
             "type": "main"
           }
         ]
@@ -185,40 +51,7 @@
         [
           {
             "index": 0,
-            "node": "HTTP Request - RSS Playlist",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Telegram - No Transcript": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Mark Processed No Transcript",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "Telegram - Send Summary": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Mark Processed Summarized",
-            "type": "main"
-          }
-        ]
-      ]
-    },
-    "XML": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Normalize List",
+            "node": "Code - Load Users",
             "type": "main"
           }
         ]
@@ -266,28 +99,21 @@
       "typeVersion": 1
     },
     {
-      "id": "5cddc475-35ee-44a2-8d97-5ccfd2d6c3c7",
-      "name": "HTTP Request - RSS Playlist",
+      "id": "b1000001-0000-0000-0000-000000000001",
+      "name": "Code - Load Users",
       "parameters": {
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "text"
-            }
-          }
-        },
-        "url": "=https://www.youtube.com/feeds/videos.xml?playlist_id={{$env.YOUTUBE_PLAYLIST_ID}}"
+        "jsCode": "const fs = require('fs');\nconst USERS_PATH = '/workflows/state/users.json';\nlet users;\ntry {\n  users = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));\n} catch (e) {\n  throw new Error('users.json missing or invalid: ' + e.message);\n}\nif (!Array.isArray(users) || users.length === 0) {\n  throw new Error('users.json missing or invalid: must be a non-empty array');\n}\nreturn users.map(u => ({ json: { name: u.name, playlistId: u.playlistId, chatId: u.chatId } }));"
       },
       "position": [
         80,
         3920
       ],
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
     },
     {
-      "id": "2c873820-d648-481d-ae65-bf1b28bee06a",
-      "name": "XML",
+      "id": "b1000001-0000-0000-0000-000000000002",
+      "name": "Loop Over Users",
       "parameters": {
         "options": {}
       },
@@ -295,313 +121,28 @@
         304,
         3920
       ],
-      "type": "n8n-nodes-base.xml",
-      "typeVersion": 1
-    },
-    {
-      "id": "c504163f-cfaf-4be6-b4f4-4ba95cac1176",
-      "name": "Code - Normalize List",
-      "parameters": {
-        "jsCode": "// Normalize XML feed entries into flat items: { videoId, title, publishedAt, url }\nconst data = $input.first().json;\nconst feed = data.feed;\n\nlet entries = feed.entry;\nif (!entries) return [];\nif (!Array.isArray(entries)) entries = [entries];\n\nreturn entries.map(entry => ({\n  json: {\n    videoId: entry['yt:videoId'],\n    title: Array.isArray(entry.title) ? entry.title[0] : entry.title,\n    publishedAt: Array.isArray(entry.published) ? entry.published[0] : entry.published,\n    url: `https://youtu.be/${entry['yt:videoId']}`\n  }\n}));"
-      },
-      "position": [
-        528,
-        3920
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "id": "fd2ca9e2-3a14-4dd5-a283-78a4321b4e2b",
-      "name": "Code - Filter New",
-      "parameters": {
-        "jsCode": "const fs = require('fs');\nconst STATE_PATH = '/workflows/state/processed.json';\nlet processed = {};\ntry { processed = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch (e) {}\nreturn $input.all().filter(i => !(i.json.videoId in processed));"
-      },
-      "position": [
-        736,
-        3920
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "id": "1fe8cb7a-32c1-4816-872a-0eba2426a0b7",
-      "name": "Loop Over Items",
-      "parameters": {
-        "options": {}
-      },
-      "position": [
-        960,
-        3920
-      ],
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3
     },
     {
-      "id": "995753e3-dd28-45bd-a1b5-d3a2ddd4cde7",
-      "name": "HTTP Request - Supadata Transcript",
+      "id": "b1000001-0000-0000-0000-000000000003",
+      "name": "Execute Workflow",
       "onError": "continueRegularOutput",
       "parameters": {
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-key",
-              "value": "={{$env.SUPADATA_API_KEY}}"
-            }
-          ]
-        },
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
-        },
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "videoId",
-              "value": "={{$json.videoId}}"
-            },
-            {
-              "name": "text",
-              "value": "true"
-            }
-          ]
-        },
-        "sendHeaders": true,
-        "sendQuery": true,
-        "url": "https://api.supadata.ai/v1/youtube/transcript"
-      },
-      "position": [
-        1184,
-        3824
-      ],
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2
-    },
-    {
-      "id": "3c44d43a-fa89-406a-b330-a4ba7f65b1a4",
-      "name": "IF - Has Transcript",
-      "parameters": {
-        "conditions": {
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "cond-status-200",
-              "leftValue": "={{$json.statusCode}}",
-              "operator": {
-                "operation": "equals",
-                "type": "number"
-              },
-              "rightValue": 200
-            },
-            {
-              "id": "cond-content-nonempty",
-              "leftValue": "={{$json.body && $json.body.content ? $json.body.content.length : 0}}",
-              "operator": {
-                "operation": "gt",
-                "type": "number"
-              },
-              "rightValue": 0
-            }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          }
-        },
-        "options": {}
-      },
-      "position": [
-        1408,
-        3824
-      ],
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2
-    },
-    {
-      "id": "160c58f4-31c8-45c5-925c-8a16704ea85a",
-      "name": "Code - Trim Transcript",
-      "parameters": {
-        "jsCode": "// Trim transcript to ≤ 40000 chars before sending to Ollama (heuristic for num_ctx=16k tokens)\n// Also carry forward videoId, title, url, lang from the loop item and transcript response.\nconst loopItem = $('Loop Over Items').first().json;\nconst transcriptBody = $input.first().json.body;\n\nconst rawContent = transcriptBody.content || '';\nconst trimmedContent = rawContent.slice(0, 40000);\nconst lang = transcriptBody.lang || null;\n\nreturn [{\n  json: {\n    videoId: loopItem.videoId,\n    title: loopItem.title,\n    url: loopItem.url,\n    lang: lang,\n    trimmedContent: trimmedContent\n  }\n}];"
-      },
-      "position": [
-        1616,
-        3712
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "id": "67cf244b-b1b7-4e2c-91cd-5625c8c8b7ce",
-      "name": "Code - Build Ollama Request",
-      "parameters": {
-        "jsCode": "// Build Ollama /api/chat payload with JSON Schema enforcement.\n// LangChain Ollama node не умеет передавать format=schema, поэтому шлём через HTTP Request напрямую.\nconst item = $input.first().json;\n\nconst systemPrompt = `Ты ассистент, который делает подробный пересказ видео на YouTube по его субтитрам.\nВсегда отвечай на русском языке.\nВерни ТОЛЬКО валидный JSON со структурой:\n{\"main_idea\": \"строка\", \"summary\": [\"пункт 1\", \"пункт 2\", \"пункт 3\", ...]}\n\nЖёсткие требования к содержанию:\n- В массиве summary ОБЯЗАТЕЛЬНО от 10 до 15 элементов. Меньше 10 — НЕДОПУСТИМО.\n- Каждый элемент — законченное предложение длиной 100-200 символов с конкретикой: названия инструментов и сервисов, шаги, цифры, цены, технологии, имена.\n- Покрой все ключевые этапы видео последовательно: что делает автор, какими инструментами пользуется, какие нюансы и советы даёт, какой итог.\n- Никаких вступительных фраз вроде \"В видео автор...\". Никакого markdown, никаких \\`\\`\\`json. Только сырой JSON.`;\n\nconst userPrompt = `Название: ${item.title}\\n\\nСубтитры:\\n${item.trimmedContent}\\n\\nНапоминание: верни JSON с массивом summary из 10-15 подробных пунктов (по 100-200 символов), с конкретными названиями инструментов, шагами и цифрами.`;\n\nconst payload = {\n  model: $env.OLLAMA_MODEL,\n  stream: false,\n  keep_alive: $env.OLLAMA_KEEP_ALIVE_ACTIVE,\n  format: {\n    type: 'object',\n    properties: {\n      main_idea: { type: 'string' },\n      summary: {\n        type: 'array',\n        items: { type: 'string' },\n        minItems: 10,\n        maxItems: 15\n      }\n    },\n    required: ['main_idea', 'summary']\n  },\n  options: {\n    temperature: 0.3,\n    num_ctx: 32768,\n    num_predict: 2000,\n    repeat_penalty: 1.3\n  },\n  messages: [\n    { role: 'system', content: systemPrompt },\n    { role: 'user', content: userPrompt }\n  ]\n};\n\nreturn [{\n  json: {\n    videoId: item.videoId,\n    title: item.title,\n    url: item.url,\n    lang: item.lang,\n    payload: payload\n  }\n}];"
-      },
-      "position": [
-        1840,
-        3712
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "id": "75fd943d-d554-48d1-8ffd-8233dce70923",
-      "name": "HTTP Request - Ollama Chat",
-      "parameters": {
-        "jsonBody": "={{ JSON.stringify($json.payload) }}",
-        "method": "POST",
-        "options": {
-          "timeout": 600000
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "url": "http://ollama:11434/api/chat"
-      },
-      "position": [
-        1952,
-        3712
-      ],
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2
-    },
-    {
-      "id": "16d704ac-3a3b-4d16-bb70-863aed1c6b8f",
-      "name": "Code - Parse Ollama Response",
-      "parameters": {
-        "jsCode": "// Parse Ollama /api/chat response. format=schema гарантирует валидный JSON, но на всякий случай — фоллбек.\nconst prevItem = $('Code - Build Ollama Request').first().json;\nconst inJson = $input.first().json;\nconst rawResponse = (inJson.message && inJson.message.content) || inJson.response || '';\n\nlet main_idea, summary;\ntry {\n  const parsed = JSON.parse(rawResponse);\n  main_idea = parsed.main_idea || '';\n  summary = Array.isArray(parsed.summary) ? parsed.summary : [];\n} catch (e) {\n  const lines = rawResponse.split('\\n').map(l => l.trim()).filter(Boolean);\n  summary = lines.slice(0, 10);\n  main_idea = lines[0] ? lines[0].split('.')[0] + '.' : 'Не удалось распарсить ответ.';\n}\n\nreturn [{\n  json: {\n    videoId: prevItem.videoId,\n    title: prevItem.title,\n    url: prevItem.url,\n    lang: prevItem.lang,\n    main_idea: main_idea,\n    summary: summary\n  }\n}];"
-      },
-      "position": [
-        2064,
-        3712
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "id": "6ca8c13d-ece2-4b43-a7c3-fd5de6a36542",
-      "name": "Code - Format Telegram Message",
-      "parameters": {
-        "jsCode": "// HTML-escape title, main_idea, and each summary bullet, then compose Telegram message.\nfunction escapeHtml(str) {\n  if (typeof str !== 'string') str = String(str || '');\n  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst inJson = $input.first().json;\nconst { videoId, title, url, main_idea, summary } = inJson;\n\nconst escapedTitle = escapeHtml(title);\nconst escapedMainIdea = escapeHtml(main_idea);\nconst bulletLines = Array.isArray(summary)\n  ? summary.map(s => `• ${escapeHtml(s)}`).join('\\n')\n  : '';\n\nconst text = `<b>${escapedTitle}</b>\\n<a href=\"https://youtu.be/${videoId}\">Смотреть на YouTube</a>\\n\\n📌 <b>Главная идея</b>\\n${escapedMainIdea}\\n\\n📝 <b>Обзор</b>\\n${bulletLines}`;\n\nreturn [{\n  json: {\n    videoId: videoId,\n    title: title,\n    url: url,\n    lang: inJson.lang,\n    text: text\n  }\n}];"
-      },
-      "position": [
-        2288,
-        3712
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "credentials": {
-        "telegramApi": {
-          "id": "a8gRroZ2u2iTGniA",
-          "name": "Telegram account"
-        }
-      },
-      "id": "a5eef2d4-52d1-401e-8362-f56720bdf8ec",
-      "name": "Telegram - Send Summary",
-      "parameters": {
-        "additionalFields": {
-          "appendAttribution": false,
-          "disable_web_page_preview": false,
-          "parse_mode": "HTML"
-        },
-        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
-        "text": "={{$json.text}}"
-      },
-      "position": [
-        2496,
-        3712
-      ],
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "webhookId": "72e5d610-6a5c-40c7-8068-e6c84697f628"
-    },
-    {
-      "id": "e6aa87fd-7149-42dc-afdd-cbc7fab61d6d",
-      "name": "Code - Mark Processed Summarized",
-      "parameters": {
-        "jsCode": "const fs = require('fs');\nconst STATE_DIR = '/workflows/state';\nconst STATE_PATH = STATE_DIR + '/processed.json';\nlet processed = {};\ntry { processed = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch (e) {}\nconst ref = $('Code - Format Telegram Message').item.json;\nprocessed[ref.videoId] = ref.title;\nfs.mkdirSync(STATE_DIR, { recursive: true });\nconst tmp = STATE_PATH + '.tmp';\nfs.writeFileSync(tmp, JSON.stringify(processed, null, 2));\nfs.renameSync(tmp, STATE_PATH);\nreturn $input.all();"
-      },
-      "position": [
-        2720,
-        3712
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "id": "f4fe2af1-2fe2-498b-8b79-f62c8722c2c0",
-      "name": "Code - Prepare No Transcript",
-      "parameters": {
-        "jsCode": "// Carry forward videoId, title, url, lang from the loop item for the 'no transcript' path.\nconst loopItem = $('Loop Over Items').first().json;\nreturn [{\n  json: {\n    videoId: loopItem.videoId,\n    title: loopItem.title,\n    url: loopItem.url,\n    lang: null\n  }\n}];"
-      },
-      "position": [
-        1616,
-        3936
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "credentials": {
-        "telegramApi": {
-          "id": "a8gRroZ2u2iTGniA",
-          "name": "Telegram account"
-        }
-      },
-      "id": "6851d25b-a24d-4817-b15d-60aa2985f64b",
-      "name": "Telegram - No Transcript",
-      "parameters": {
-        "additionalFields": {
-          "appendAttribution": false,
-          "disable_web_page_preview": false,
-          "parse_mode": "HTML"
-        },
-        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
-        "text": "=Субтитров нет: <a href=\"https://youtu.be/{{$json.videoId}}\">{{$json.title}}</a>"
-      },
-      "position": [
-        1840,
-        3936
-      ],
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "webhookId": "bb90ae23-8a25-40b4-b5e9-92fe4684c3a8"
-    },
-    {
-      "id": "6a9b1d92-f02e-4e61-96e0-c6602b40da62",
-      "name": "Code - Mark Processed No Transcript",
-      "parameters": {
-        "jsCode": "const fs = require('fs');\nconst STATE_DIR = '/workflows/state';\nconst STATE_PATH = STATE_DIR + '/processed.json';\nlet processed = {};\ntry { processed = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch (e) {}\nconst ref = $('Code - Prepare No Transcript').item.json;\nprocessed[ref.videoId] = ref.title;\nfs.mkdirSync(STATE_DIR, { recursive: true });\nconst tmp = STATE_PATH + '.tmp';\nfs.writeFileSync(tmp, JSON.stringify(processed, null, 2));\nfs.renameSync(tmp, STATE_PATH);\nreturn $input.all();"
-      },
-      "position": [
-        2064,
-        3936
-      ],
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2
-    },
-    {
-      "id": "d184a09e-e83b-4ddc-8f32-2e7bb94f5184",
-      "name": "HTTP Request - Ollama Unload",
-      "parameters": {
-        "jsonBody": "={\"model\": \"{{$env.OLLAMA_MODEL}}\", \"messages\": [], \"keep_alive\": 0}",
-        "method": "POST",
+        "mode": "each",
         "options": {},
-        "sendBody": true,
-        "specifyBody": "json",
-        "url": "http://ollama:11434/api/chat"
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ytSummaryPerUser01"
+        }
       },
       "position": [
-        1184,
-        4080
+        560,
+        3984
       ],
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1
     }
   ],
   "pinData": {},
@@ -613,6 +154,10 @@
     "executionOrder": "v1",
     "timeSavedMode": "fixed"
   },
-  "staticData": null,
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    }
+  },
   "tags": []
 }

@@ -19,6 +19,21 @@ echo "▸ Preparing workflows/state..."
 mkdir -p workflows/state
 [ -f workflows/state/processed.json ] || echo "{}" > workflows/state/processed.json
 
+if [ ! -f workflows/state/users.json ]; then
+  : "${YOUTUBE_PLAYLIST_ID:?YOUTUBE_PLAYLIST_ID must be set in .env}"
+  : "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID must be set in .env}"
+  cat > workflows/state/users.json <<EOF
+[
+  {
+    "name": "default",
+    "playlistId": "${YOUTUBE_PLAYLIST_ID}",
+    "chatId": "${TELEGRAM_CHAT_ID}"
+  }
+]
+EOF
+  echo "  ✓ created workflows/state/users.json for default user"
+fi
+
 case "$(uname -s)" in
   Linux|Darwin)
     sudo chown -R 1000:1000 workflows/state

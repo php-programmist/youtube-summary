@@ -22,3 +22,4 @@ benchmark-results/
 # n8n CLI export scratch dir (used by `make pull`)
 workflows/.export/
 workflows/state/processed.json
+workflows/state/users.json
