@@ -1,6 +1,6 @@
 services:
   n8n:
-    image: yt-summary-n8n:local
+    image: n8nio/n8n:latest
     restart: unless-stopped
     ports: ["5678:5678"]
     env_file:
@@ -23,9 +23,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
-    # Порт наружу не публикуем — конфликт с WSL-ollama на 11434.
     # n8n обращается через docker network: http://ollama:11434
-    # Для отладочных скриптов используется WSL-ollama на host:11434.
     volumes:
       - ollama-data:/root/.ollama
     environment:
@@ -42,18 +40,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-
-  ollama-init:
-    image: ollama/ollama:latest
-    depends_on:
-      ollama:
-        condition: service_healthy
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e4b}
-    # $${OLLAMA_MODEL}: doubled $$ so compose does not interpolate; shell inside container resolves it
-    entrypoint: ["/bin/sh", "-c", "ollama pull $${OLLAMA_MODEL}"]
-    restart: "no"
 
 volumes:
   n8n-data:

@@ -5,7 +5,7 @@
 ## Стек
 
 - **n8n** — оркестрация workflow
-- **Ollama** (Docker, NVIDIA GPU) — локальный LLM, по умолчанию `qwen2.5:14b-instruct-q4_K_M` (~9 GB VRAM)
+- **Ollama** (Docker, NVIDIA GPU) — локальный LLM, по умолчанию `gemma4:e4b` (~11 GB VRAM)
 - **supadata.ai** — получение субтитров YouTube
 - **Docker Compose** на WSL2 + NVIDIA GPU (16+ GB VRAM рекомендуется)
 
@@ -16,7 +16,10 @@
 
 ### Telegram
 - Создать бота через @BotFather и получить его токен. 
-- Получить `chat_id` чата/канала для отчётов.
+- Получить `chat_id` чата/канала для отчётов - Зайдите в Настройки → Продвинутые настройки → Экспериментальные настройки. Включите опцию Show Peer IDs in Profile, после чего ID будет отображаться в профиле чата.
+
+### Supadata.ai
+- Получить API-ключ [supadata.ai](https://supadata.ai).
 
 ### Docker
 
@@ -67,30 +70,42 @@ cp .env.example .env
 | `TELEGRAM_BOT_TOKEN` | Токен бота от @BotFather | `123456:AA...` |
 | `TELEGRAM_CHAT_ID` | ID чата/канала для отчётов | `123456789` |
 | `SUPADATA_API_KEY` | API-ключ supadata.ai | `sd_...` |
-| `OLLAMA_MODEL` | Модель Ollama (переопределяемая) | `qwen2.5:14b-instruct-q4_K_M` |
+| `OLLAMA_MODEL` | Модель Ollama (переопределяемая) | `gemma4:e4b` |
 | `OLLAMA_KEEP_ALIVE_ACTIVE` | Время удержания модели в VRAM во время работы | `10m` |
 | `TZ` | Временная зона для расписания n8n | `Europe/Moscow` |
 | `N8N_HOST` | Хост n8n (менять только при проксировании) | `localhost` |
 
 ## Запуск
 
+Первый запуск — через bootstrap-скрипт:
+
 ```bash
-docker compose up -d --build
+./scripts/bootstrap.sh
 ```
 
-Флаг `--build` нужен только при первом запуске (или после изменения `Dockerfile`) — локально собирается образ `yt-summary-n8n:local` поверх `n8nio/n8n:latest`.
+Скрипт:
 
-При первом старте:
+1. Поднимает `ollama` с доступом к GPU и ждёт healthcheck.
+2. Проверяет модель в volume `yt-summary_ollama-data`; если её нет — пулит (`~9.6 GB`, несколько минут, зависит от канала).
+3. Стартует `n8n` (состояние — в docker-managed named volume `yt-summary_n8n-data`, права настраиваются автоматически).
 
-1. `ollama` запускается с доступом к GPU.
-2. `ollama-init` однократно скачивает модель (~9 GB) — первый запуск займёт несколько минут в зависимости от канала.
-3. `n8n` стартует после того, как `ollama` прошёл healthcheck. Состояние n8n хранится в docker-managed named volume `yt-summary_n8n-data` (владелец/права настраиваются автоматически — ничего руками делать не нужно).
+Скрипт идемпотентен: при повторном запуске модель не перекачивается, уже работающие контейнеры не пересоздаются.
+
+Последующие запуски (после выключения):
+
+```bash
+docker compose up -d
+```
 
 Открыть [http://localhost:5678](http://localhost:5678) и создать учётную запись владельца.
 
 ## Выбор LLM
 
-Бенчмарк из 7 локальных моделей (Ollama, RTX 3080 Laptop 16 ГБ, транскрипт 29 929 символов, по 3 прогона) — полные результаты в [`benchmark-results/benchmark-results.md`](benchmark-results/benchmark-results.md). Score — композитная метрика (структура JSON + длины + покрытие ключевых слов + специфичность), Judge (0–10) — экспертная оценка связности и фактической точности пересказа.
+Проведен бенчмарк из 7 локальных моделей (Ollama, RTX 3080 Laptop 16 ГБ, транскрипт 29 929 символов, по 3 прогона). 
+
+1) Score — композитная метрика (структура JSON + длины + покрытие ключевых слов + специфичность).
+2) Judge (0–10) — экспертная оценка связности и фактической точности пересказа.
+3) Inference time (с) — отражает «чистую» скорость модели на генерации summary, независимо от размера промпта и холодного старта.
 
 Топ-4 по эффективности (сочетание Judge, скорости и потребления VRAM):
 
@@ -103,7 +118,7 @@ docker compose up -d --build
 
 Не рекомендуются: `phi4-mini:3.8b` (битый JSON, выдуманные фразы), `llama3.1:8b` (зацикливается в пересказе), `llama3.2:3b` (поверхностный пересказ с мешаниной языков).
 
-Модель задаётся переменной `OLLAMA_MODEL` в `.env`; `ollama-init` автоматически подтянет её при старте.
+Модель задаётся переменной `OLLAMA_MODEL` в `.env`; `scripts/bootstrap.sh` подтянет её при первом запуске. Чтобы сменить модель — обновите `.env` и перезапустите скрипт: он увидит, что новой модели нет в volume, и выполнит pull.
 
 ## Первичное развертывание workflow'ов
 
@@ -201,7 +216,7 @@ docker compose up -d
 ```
 
 **Ollama OOM / "model requires more system memory"**
-Переопределить модель в `.env`: `OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M`, затем `docker compose restart`. `ollama-init` подтянет новую модель автоматически (повторный pull).
+Переопределить модель в `.env`: `OLLAMA_MODEL=gemma4:e4b`, затем повторно запустить `./scripts/bootstrap.sh` — он увидит отсутствие модели в volume и выполнит pull.
 
 **Длинные субтитры обрезаются**
 Текущий лимит ~40k символов перед подачей в Ollama. Видео длиннее ~1.5 часа будет суммировано частично.
@@ -220,7 +235,6 @@ docker compose up -d
 
 ```
 yt-summary/
-├── Dockerfile                    # кастомный образ n8n (точка расширения)
 ├── docker-compose.yml
 ├── .env.example
 ├── .env                          # локальный, в .gitignore
@@ -229,13 +243,10 @@ yt-summary/
 ├── workflows/                    # bind-mounted в n8n как /workflows
 │   ├── yt-summary-hourly.json
 │   └── yt-summary-on-error.json
-├── scripts/
-│   ├── n8n.sh                    # pull/push/activate workflow'ов через CLI n8n
-│   └── n8n_sync.py               # нормализация JSON (стабильные git-diff'ы)
-├── ollama/
-│   └── init-model.sh
-└── data/                         # bind-volume только для ollama (модели)
-    └── ollama/
+└── scripts/
+    ├── bootstrap.sh              # первый запуск: ollama + pull модели + n8n (идемпотентно)
+    ├── n8n.sh                    # pull/push/activate workflow'ов через CLI n8n
+    └── n8n_sync.py               # нормализация JSON (стабильные git-diff'ы)
 ```
 
-Состояние n8n хранится в docker-managed named volume `yt-summary_n8n-data` — не в каталоге проекта. Список volumes: `docker volume ls | grep yt-summary`.
+Состояние n8n и модели Ollama хранятся в docker-managed named volumes `yt-summary_n8n-data` и `yt-summary_ollama-data` — не в каталоге проекта. Список volumes: `docker volume ls | grep yt-summary`.
