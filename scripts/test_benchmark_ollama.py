@@ -327,5 +327,67 @@ class TestAggregateRuns(unittest.TestCase):
         self.assertIsNone(agg["vram_peak_mb_median"])
 
 
+class TestReportWriters(unittest.TestCase):
+    def _result(self, model, score, status="OK"):
+        return {
+            "model": model,
+            "status": status,
+            "runs": [],
+            "aggregated": {
+                "quality_score_median": score,
+                "inference_s_median": 8.7,
+                "tokens_per_sec_median": 42.0,
+                "size_vram_mb_median": 9120,
+                "size_total_mb_median": 9120,
+                "vram_peak_mb_median": 9800,
+                "keyword_coverage_median": 0.75,
+                "specificity_ratio_median": 0.66,
+                "json_valid_all_runs": True,
+                "json_valid_majority": True,
+            },
+            "warnings": [],
+        }
+
+    def test_json_round_trip(self):
+        import tempfile
+        from pathlib import Path
+        meta = {"runs_per_model": 3, "started_at": "2026-04-18T16:30:00Z"}
+        results = [self._result("a", 80), self._result("b", 70)]
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "out.json"
+            bench.write_json_report(path, meta, results)
+            data = json.loads(path.read_text())
+            self.assertEqual(data["meta"]["runs_per_model"], 3)
+            self.assertEqual(len(data["models"]), 2)
+
+    def test_markdown_sorted_by_score(self):
+        import tempfile
+        from pathlib import Path
+        meta = {"runs_per_model": 3, "transcript_chars": 15234, "started_at": "2026-04-18T16:30:00Z"}
+        results = [self._result("low", 50), self._result("high", 90), self._result("mid", 70)]
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "out.md"
+            bench.write_markdown_report(path, meta, results)
+            txt = path.read_text()
+            i_high = txt.index("| high ")
+            i_mid = txt.index("| mid ")
+            i_low = txt.index("| low ")
+            self.assertLess(i_high, i_mid)
+            self.assertLess(i_mid, i_low)
+
+    def test_markdown_warnings_section(self):
+        import tempfile
+        from pathlib import Path
+        meta = {"runs_per_model": 3, "transcript_chars": 100, "started_at": "2026-04-18T16:30:00Z"}
+        r = self._result("x", 80)
+        r["warnings"] = ["unload timeout"]
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "out.md"
+            bench.write_markdown_report(path, meta, [r])
+            txt = path.read_text()
+            self.assertIn("Предупреждения", txt)
+            self.assertIn("unload timeout", txt)
+
+
 if __name__ == "__main__":
     unittest.main()

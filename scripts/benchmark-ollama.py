@@ -719,6 +719,96 @@ def aggregate_runs(runs: list[dict]) -> dict:
     return out
 
 
+# === SECTION: REPORTS ===
+
+def write_json_report(path: Path, meta: dict, results: list[dict]) -> None:
+    payload = {"meta": meta, "models": results}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def _fmt(v, fmt="{:.1f}", default="—"):
+    if v is None:
+        return default
+    try:
+        return fmt.format(v)
+    except (ValueError, TypeError):
+        return str(v)
+
+
+def write_markdown_report(path: Path, meta: dict, results: list[dict]) -> None:
+    sorted_results = sorted(
+        results,
+        key=lambda r: r.get("aggregated", {}).get("quality_score_median") or -1,
+        reverse=True,
+    )
+    lines = []
+    lines.append("# Benchmark Results")
+    lines.append("")
+    lines.append(
+        f"Транскрипт: {meta.get('transcript_chars', '?')} симв. · "
+        f"Прогонов на модель: {meta.get('runs_per_model', '?')} · "
+        f"{meta.get('started_at', '')}"
+    )
+    lines.append("")
+    lines.append("| Модель | Status | Score | JSON | Cnt | Inference, с | Tok/s | VRAM, МБ | Size, МБ | Keyw | Spec |")
+    lines.append("|---|:---:|---:|:---:|:---:|---:|---:|---:|---:|---:|---:|")
+    for r in sorted_results:
+        a = r.get("aggregated", {}) or {}
+        status = r.get("status", "?")
+        score = a.get("quality_score_median")
+        json_ok = "✔" if a.get("json_valid_all_runs") else ("~" if a.get("json_valid_majority") else "✘")
+        cnt = "?"
+        if r.get("runs"):
+            cnt = r["runs"][0].get("metrics", {}).get("summary_count", "?")
+        lines.append(
+            f"| {r['model']} | {status} | {_fmt(score, '{:.1f}')} | {json_ok} | {cnt} | "
+            f"{_fmt(a.get('inference_s_median'), '{:.1f}')} | "
+            f"{_fmt(a.get('tokens_per_sec_median'), '{:.0f}')} | "
+            f"{_fmt(a.get('vram_peak_mb_median'), '{:.0f}')} | "
+            f"{_fmt(a.get('size_total_mb_median'), '{:.0f}')} | "
+            f"{_fmt(a.get('keyword_coverage_median'), '{:.2f}')} | "
+            f"{_fmt(a.get('specificity_ratio_median'), '{:.2f}')} |"
+        )
+
+    # Warnings
+    warn_blocks = [(r["model"], r.get("warnings", [])) for r in results if r.get("warnings")]
+    if warn_blocks:
+        lines.append("")
+        lines.append("## Предупреждения")
+        lines.append("")
+        for model, ws in warn_blocks:
+            for w in ws:
+                lines.append(f"- `{model}`: {w}")
+
+    # Сводка
+    usable = [r for r in sorted_results
+              if r.get("status") == "OK"
+              and (r.get("aggregated", {}).get("quality_score_median") or 0) >= 70]
+    lines.append("")
+    lines.append("## Сводка")
+    lines.append("")
+    if sorted_results:
+        top = sorted_results[0]
+        lines.append(f"**Лучшая по качеству:** `{top['model']}` "
+                     f"(score={_fmt(top.get('aggregated', {}).get('quality_score_median'), '{:.1f}')})")
+    if usable:
+        fastest = min(usable, key=lambda r: r["aggregated"].get("inference_s_median") or 1e9)
+        lines.append(f"**Самая быстрая при score ≥ 70:** `{fastest['model']}` "
+                     f"(inf={_fmt(fastest['aggregated'].get('inference_s_median'), '{:.1f}')}с)")
+        leanest = min(usable, key=lambda r: r["aggregated"].get("vram_peak_mb_median") or 1e12)
+        lines.append(f"**Самая экономная по VRAM при score ≥ 70:** `{leanest['model']}` "
+                     f"(vram={_fmt(leanest['aggregated'].get('vram_peak_mb_median'), '{:.0f}')}МБ)")
+    else:
+        lines.append("**Нет моделей со score ≥ 70.**")
+    lines.append("")
+    lines.append("> Колонка `Judge` (LLM-as-judge от 0 до 10) добавляется оркестратором отдельно "
+                 "после прогона — он читает `raw_response` каждой модели из `benchmark-results.json`.")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+
+
 def _skipped(model: str, reason: str) -> dict:
     return {
         "model": model,
