@@ -272,5 +272,60 @@ class TestProgressReporterNonTTY(unittest.TestCase):
         self.assertIn("x.md", out)
 
 
+class TestAggregateRuns(unittest.TestCase):
+    def _run(self, inf_s, score, vram, cov, json_valid=True):
+        return {
+            "wall_s": inf_s + 1,
+            "load_time_s": 5.0,
+            "prompt_eval_s": 0.5,
+            "inference_s": inf_s,
+            "total_time_s": inf_s + 0.5,
+            "eval_count": 100,
+            "tokens_per_sec": 100 / inf_s if inf_s else None,
+            "size_total_mb": 9000.0,
+            "size_vram_mb": 9000.0,
+            "vram_peak_mb": vram,
+            "raw_response": "{}",
+            "metrics": {
+                "json_valid": json_valid,
+                "has_required_fields": json_valid,
+                "summary_count": 12,
+                "count_in_range": True,
+                "too_short": 0,
+                "too_long": 0,
+                "length_ok_ratio": 1.0,
+                "keyword_coverage": cov,
+                "specificity_ratio": 0.5,
+                "duplicate_summary_keys": 1,
+                "quality_score": score,
+            },
+        }
+
+    def test_median_of_three(self):
+        runs = [self._run(8, 70, 9000, 0.6), self._run(10, 80, 9100, 0.7), self._run(9, 75, 9050, 0.65)]
+        agg = bench.aggregate_runs(runs)
+        self.assertEqual(agg["inference_s_median"], 9.0)
+        self.assertEqual(agg["quality_score_median"], 75.0)
+        self.assertEqual(agg["vram_peak_mb_median"], 9050)
+        self.assertAlmostEqual(agg["keyword_coverage_median"], 0.65, places=2)
+        self.assertTrue(agg["json_valid_majority"])
+        self.assertEqual(agg["json_valid_all_runs"], True)
+
+    def test_majority_invalid(self):
+        runs = [
+            self._run(8, 0, 9000, 0, json_valid=False),
+            self._run(8, 0, 9000, 0, json_valid=False),
+            self._run(8, 80, 9000, 0.7, json_valid=True),
+        ]
+        agg = bench.aggregate_runs(runs)
+        self.assertFalse(agg["json_valid_majority"])
+        self.assertFalse(agg["json_valid_all_runs"])
+
+    def test_handles_none_vram(self):
+        runs = [self._run(8, 70, None, 0.6), self._run(8, 70, None, 0.6)]
+        agg = bench.aggregate_runs(runs)
+        self.assertIsNone(agg["vram_peak_mb_median"])
+
+
 if __name__ == "__main__":
     unittest.main()

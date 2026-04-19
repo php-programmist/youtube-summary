@@ -686,6 +686,39 @@ def run_model(base_url: str, model: str, idx: int, total: int,
     return result
 
 
+# === SECTION: AGGREGATION ===
+
+def _median(values: list, default=None):
+    cleaned = [v for v in values if v is not None]
+    if not cleaned:
+        return default
+    return statistics.median(cleaned)
+
+
+def aggregate_runs(runs: list[dict]) -> dict:
+    """Сворачивает список runs в одну сводку с медианой и флагами валидности."""
+    metric_keys = ["quality_score", "keyword_coverage", "specificity_ratio", "length_ok_ratio"]
+    perf_keys = ["load_time_s", "prompt_eval_s", "inference_s", "total_time_s",
+                 "tokens_per_sec", "size_total_mb", "size_vram_mb", "vram_peak_mb"]
+
+    out: dict[str, Any] = {}
+    for k in perf_keys:
+        out[f"{k}_median"] = _median([r.get(k) for r in runs])
+    for k in metric_keys:
+        out[f"{k}_median"] = _median([r["metrics"].get(k) for r in runs])
+
+    valid_flags = [r["metrics"].get("json_valid", False) for r in runs]
+    out["json_valid_all_runs"] = all(valid_flags)
+    out["json_valid_majority"] = sum(valid_flags) > len(valid_flags) / 2
+
+    # Min/max для inference и vram (полезно для отчёта)
+    inf_values = [r.get("inference_s") for r in runs if r.get("inference_s") is not None]
+    out["inference_s_min"] = min(inf_values) if inf_values else None
+    out["inference_s_max"] = max(inf_values) if inf_values else None
+
+    return out
+
+
 def _skipped(model: str, reason: str) -> dict:
     return {
         "model": model,
