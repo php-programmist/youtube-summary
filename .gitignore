@@ -15,3 +15,6 @@ Thumbs.db
 
 # Node (just in case)
 node_modules/
+
+# Benchmark output
+benchmark-results/
