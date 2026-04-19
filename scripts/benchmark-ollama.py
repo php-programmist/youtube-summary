@@ -268,6 +268,54 @@ def ollama_ps(base_url: str) -> list[dict]:
     return data.get("models", [])
 
 
+def _iter_pull_events(line_iter):
+    """Парсит NDJSON-стрим от /api/pull. line_iter выдаёт bytes."""
+    for raw in line_iter:
+        if not raw:
+            continue
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            yield json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+
+
+def ollama_pull(base_url: str, model: str,
+                on_progress: Optional[Callable[[dict], None]] = None,
+                timeout: float = 1800) -> None:
+    """Скачивает модель через /api/pull, передаёт каждый event в on_progress.
+
+    Бросает OllamaError если последний event не имеет status='success'.
+    """
+    payload = {"name": model, "stream": True}
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        f"{base_url}/api/pull",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    last = None
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            for event in _iter_pull_events(resp):
+                last = event
+                if on_progress:
+                    on_progress(event)
+                if event.get("error"):
+                    raise OllamaError(f"pull {model}: {event['error']}")
+    except urllib.error.HTTPError as e:
+        raise OllamaError(f"pull {model}: HTTP {e.code}")
+    except urllib.error.URLError as e:
+        raise OllamaError(f"pull {model}: {e.reason}")
+    if not last or last.get("status") != "success":
+        raise OllamaError(f"pull {model}: stream ended without success (last={last})")
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0

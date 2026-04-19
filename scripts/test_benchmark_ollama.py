@@ -220,5 +220,20 @@ class TestComputeMetrics(unittest.TestCase):
         self.assertGreater(m["quality_score"], 0.0)
 
 
+class TestPullProgressParser(unittest.TestCase):
+    def test_parse_pull_lines(self):
+        # Эмулируем тело /api/pull (NDJSON)
+        lines = [
+            '{"status":"pulling manifest"}',
+            '{"status":"downloading","digest":"sha256:abc","total":100,"completed":40}',
+            '{"status":"downloading","digest":"sha256:abc","total":100,"completed":100}',
+            '{"status":"success"}',
+        ]
+        events = list(bench._iter_pull_events(iter(line.encode() for line in lines)))
+        self.assertEqual(events[0]["status"], "pulling manifest")
+        self.assertEqual(events[1]["completed"], 40)
+        self.assertEqual(events[-1]["status"], "success")
+
+
 if __name__ == "__main__":
     unittest.main()
