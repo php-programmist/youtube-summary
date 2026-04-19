@@ -427,6 +427,120 @@ class NvidiaSmiMonitor:
             self._thread.join(timeout=2)
 
 
+# === SECTION: PROGRESS ===
+
+def _fmt_mmss(seconds: float) -> str:
+    s = int(seconds)
+    return f"{s // 60:02d}:{s % 60:02d}"
+
+
+class ProgressReporter:
+    """Прогресс-индикатор в stderr.
+
+    TTY-режим: фоновый таймер обновляет текущую строку через \\r каждые ~2с.
+    Не-TTY: одна строка на событие, без перезаписи.
+    """
+
+    TICK_INTERVAL = 2.0
+
+    def __init__(self, stream=None, is_tty: Optional[bool] = None):
+        self.stream = stream if stream is not None else sys.stderr
+        self.is_tty = is_tty if is_tty is not None else self.stream.isatty()
+        self._tick_stop: Optional[threading.Event] = None
+        self._tick_thread: Optional[threading.Thread] = None
+        self._current_phase: Optional[str] = None
+        self._phase_start: float = 0.0
+        self._lock = threading.Lock()
+
+    def _write(self, s: str, end: str = "\n"):
+        with self._lock:
+            self.stream.write(s + end)
+            self.stream.flush()
+
+    def _write_inline(self, s: str):
+        with self._lock:
+            self.stream.write("\r" + s.ljust(80))
+            self.stream.flush()
+
+    def overall_start(self, total_models: int, runs_per_model: int):
+        per_model = runs_per_model + 1  # warm-up + N
+        total = total_models * per_model
+        self._write(
+            f"[BENCH] {total_models} моделей × {per_model} прогона "
+            f"(warm-up + {runs_per_model}) = {total} запросов"
+        )
+
+    def model_start(self, idx: int, total: int, model: str):
+        self._write(f"[{idx}/{total}] {model}")
+
+    def phase(self, name: str):
+        self._stop_tick()
+        self._current_phase = name
+        self._phase_start = time.monotonic()
+        if self.is_tty:
+            self._start_tick()
+        else:
+            self._write(f"  {name}…")
+
+    def phase_done(self, elapsed: Optional[float] = None):
+        self._stop_tick()
+        if elapsed is None:
+            elapsed = time.monotonic() - self._phase_start
+        if self.is_tty:
+            line = f"  {self._current_phase} · {_fmt_mmss(elapsed)}"
+            self._write_inline(line)
+            self._write("")  # перевод строки
+        else:
+            line = f"  {self._current_phase} · {elapsed:.1f}s"
+            self._write(line)
+        self._current_phase = None
+
+    def run_done(self, idx: int, total: int, elapsed: float, tokens_per_sec: Optional[float]):
+        self._stop_tick()
+        tps = f" ({tokens_per_sec:.0f} tok/s)" if tokens_per_sec else ""
+        line = f"  run {idx}/{total} · {_fmt_mmss(elapsed)}{tps}"
+        if self.is_tty:
+            self._write_inline(line)
+            self._write("")
+        else:
+            self._write(line)
+
+    def model_done(self, score: float, inf: float, vram: Optional[int], cov: float):
+        vram_str = f"{vram}MB" if vram is not None else "n/a"
+        self._write(
+            f"  ✔ score={score:.1f}  inf={inf:.1f}s  vram={vram_str}  cov={cov:.2f}"
+        )
+
+    def model_skipped(self, reason: str):
+        self._write(f"  ⚠ SKIPPED: {reason}")
+
+    def overall_done(self, elapsed: float, ok: int, skipped: int, unusable: int, report_path: str):
+        self._write(
+            f"[BENCH] готово за {_fmt_mmss(elapsed)} · "
+            f"OK={ok} SKIPPED={skipped} UNUSABLE={unusable} · "
+            f"отчёт: {report_path}"
+        )
+
+    def _start_tick(self):
+        self._tick_stop = threading.Event()
+        self._tick_thread = threading.Thread(target=self._tick_loop, daemon=True)
+        self._tick_thread.start()
+
+    def _stop_tick(self):
+        if self._tick_stop:
+            self._tick_stop.set()
+        if self._tick_thread:
+            self._tick_thread.join(timeout=1)
+        self._tick_stop = None
+        self._tick_thread = None
+
+    def _tick_loop(self):
+        while self._tick_stop and not self._tick_stop.is_set():
+            elapsed = time.monotonic() - self._phase_start
+            self._write_inline(f"  {self._current_phase}… {_fmt_mmss(elapsed)}")
+            self._tick_stop.wait(self.TICK_INTERVAL)
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0

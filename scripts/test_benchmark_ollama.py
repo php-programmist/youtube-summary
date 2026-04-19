@@ -235,5 +235,42 @@ class TestPullProgressParser(unittest.TestCase):
         self.assertEqual(events[-1]["status"], "success")
 
 
+class TestProgressReporterNonTTY(unittest.TestCase):
+    def setUp(self):
+        import io
+        self.buf = io.StringIO()
+        self.reporter = bench.ProgressReporter(stream=self.buf, is_tty=False)
+
+    def test_overall_start(self):
+        self.reporter.overall_start(total_models=3, runs_per_model=3)
+        out = self.buf.getvalue()
+        self.assertIn("[BENCH]", out)
+        self.assertIn("3 моделей", out)
+        self.assertIn("4 прогона", out)  # warm-up + 3
+
+    def test_model_lifecycle(self):
+        self.reporter.model_start(idx=1, total=3, model="qwen2.5:7b")
+        self.reporter.phase("loading")
+        self.reporter.phase_done(elapsed=12.5)
+        self.reporter.run_done(idx=1, total=3, elapsed=8.0, tokens_per_sec=42.0)
+        self.reporter.model_done(score=82.5, inf=8.7, vram=9120, cov=0.75)
+        out = self.buf.getvalue()
+        self.assertIn("[1/3] qwen2.5:7b", out)
+        self.assertIn("loading", out)
+        self.assertIn("12.5", out)
+        self.assertIn("run 1/3", out)
+        self.assertIn("42", out)
+        self.assertIn("score=82.5", out)
+
+    def test_overall_done(self):
+        self.reporter.overall_done(elapsed=2832, ok=8, skipped=1, unusable=1, report_path="x.md")
+        out = self.buf.getvalue()
+        self.assertIn("47:12", out)
+        self.assertIn("OK=8", out)
+        self.assertIn("SKIPPED=1", out)
+        self.assertIn("UNUSABLE=1", out)
+        self.assertIn("x.md", out)
+
+
 if __name__ == "__main__":
     unittest.main()
