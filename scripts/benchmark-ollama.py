@@ -541,6 +541,161 @@ class ProgressReporter:
             self._tick_stop.wait(self.TICK_INTERVAL)
 
 
+# === SECTION: MODEL RUNNER ===
+
+def _ns_to_s(ns: Optional[int]) -> Optional[float]:
+    return ns / 1e9 if ns else None
+
+
+def _do_one_run(base_url: str, model: str, messages: list[dict],
+                fmt, keepalive: str, timeout: float,
+                keywords: list[str]) -> dict:
+    """Делает один запрос + собирает все метрики прогона."""
+    with NvidiaSmiMonitor() as vram_mon:
+        t0 = time.monotonic()
+        resp = ollama_chat(base_url, model, messages, OLLAMA_OPTIONS, fmt,
+                           keep_alive=keepalive, timeout=timeout)
+        wall_s = time.monotonic() - t0
+        try:
+            ps = ollama_ps(base_url)
+        except OllamaError:
+            ps = []
+    raw = resp.get("message", {}).get("content", "")
+    metrics = compute_metrics(raw, keywords)
+    ps_entry = next(
+        (m for m in ps if (m.get("name") == model or m.get("model") == model)),
+        {},
+    )
+    size_total = ps_entry.get("size")
+    size_vram = ps_entry.get("size_vram")
+    return {
+        "wall_s": wall_s,
+        "load_time_s": _ns_to_s(resp.get("load_duration")),
+        "prompt_eval_s": _ns_to_s(resp.get("prompt_eval_duration")),
+        "inference_s": _ns_to_s(resp.get("eval_duration")),
+        "total_time_s": _ns_to_s(resp.get("total_duration")),
+        "eval_count": resp.get("eval_count"),
+        "tokens_per_sec": (
+            resp.get("eval_count") / (_ns_to_s(resp.get("eval_duration")) or 1e-9)
+            if resp.get("eval_count") and resp.get("eval_duration") else None
+        ),
+        "size_total_mb": round(size_total / 1048576, 1) if size_total else None,
+        "size_vram_mb": round(size_vram / 1048576, 1) if size_vram else None,
+        "vram_peak_mb": vram_mon.peak_mb,
+        "raw_response": raw,
+        "metrics": metrics,
+    }
+
+
+def run_model(base_url: str, model: str, idx: int, total: int,
+              messages: list[dict], runs: int,
+              keywords: list[str], reporter: ProgressReporter,
+              per_model_dir: Path) -> dict:
+    """Полный цикл по одной модели. Возвращает словарь, готовый для отчёта."""
+    reporter.model_start(idx, total, model)
+    warnings: list[str] = []
+
+    # 1. Pull
+    reporter.phase("pulling")
+    try:
+        ollama_pull(base_url, model)
+        reporter.phase_done()
+    except OllamaError as e:
+        reporter.phase_done()
+        reporter.model_skipped(str(e))
+        return _skipped(model, f"pull failed: {e}")
+
+    # 2. Pre-run cleanup
+    reporter.phase("cleanup")
+    ollama_unload_all(base_url, timeout=30)
+    reporter.phase_done()
+
+    # 3. Warm-up
+    reporter.phase("warm-up")
+    try:
+        warm_resp = ollama_chat(
+            base_url, model, messages, OLLAMA_OPTIONS, JSON_SCHEMA,
+            keep_alive=os.environ.get("OLLAMA_KEEP_ALIVE_ACTIVE", "5m"),
+            timeout=600,
+        )
+        warm_raw = warm_resp.get("message", {}).get("content", "")
+        try:
+            json.loads(warm_raw)
+        except json.JSONDecodeError:
+            reporter.phase_done()
+            reporter.model_skipped("warm-up returned invalid JSON")
+            return _skipped(model, "warm-up returned invalid JSON")
+        reporter.phase_done()
+    except OllamaError as e:
+        reporter.phase_done()
+        reporter.model_skipped(f"warm-up failed: {e}")
+        return _skipped(model, f"warm-up failed: {e}")
+
+    # 4. Measured runs
+    runs_data = []
+    for i in range(1, runs + 1):
+        reporter.phase(f"run {i}/{runs}")
+        try:
+            r = _do_one_run(
+                base_url, model, messages, JSON_SCHEMA,
+                keepalive=os.environ.get("OLLAMA_KEEP_ALIVE_ACTIVE", "5m"),
+                timeout=600, keywords=keywords,
+            )
+        except OllamaError as e:
+            reporter.phase_done()
+            warnings.append(f"run {i} failed: {e}")
+            continue
+        runs_data.append(r)
+        reporter.run_done(i, runs, r["wall_s"], r["tokens_per_sec"])
+
+    # 5. Unload
+    reporter.phase("unload")
+    ok = ollama_unload(base_url, model, timeout=60)
+    reporter.phase_done()
+    if not ok:
+        warnings.append("unload timeout — модель не пропала из /api/ps за 60с")
+
+    # 6. Aggregate
+    if not runs_data:
+        reporter.model_skipped("все measured runs упали")
+        return _skipped(model, "all measured runs failed")
+    aggregated = aggregate_runs(runs_data)
+    status = "UNUSABLE" if aggregated["json_valid_majority"] is False else "OK"
+
+    result = {
+        "model": model,
+        "status": status,
+        "runs": runs_data,
+        "aggregated": aggregated,
+        "warnings": warnings,
+    }
+
+    # 7. Persist per-model JSON immediately
+    per_model_dir.mkdir(parents=True, exist_ok=True)
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", model)
+    (per_model_dir / f"{slug}.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2)
+    )
+
+    reporter.model_done(
+        score=aggregated.get("quality_score_median", 0.0),
+        inf=aggregated.get("inference_s_median", 0.0),
+        vram=aggregated.get("vram_peak_mb_median"),
+        cov=aggregated.get("keyword_coverage_median", 0.0),
+    )
+    return result
+
+
+def _skipped(model: str, reason: str) -> dict:
+    return {
+        "model": model,
+        "status": "SKIPPED",
+        "runs": [],
+        "aggregated": {},
+        "warnings": [reason],
+    }
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0
