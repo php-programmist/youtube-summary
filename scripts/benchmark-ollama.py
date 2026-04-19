@@ -183,6 +183,37 @@ def duplicate_summary_keys(raw: str) -> int:
     return raw.count('"summary"')
 
 
+def compute_quality_score(metrics: dict) -> float:
+    """Интегральный балл 0-100. Веса см. benchmark-plan.md."""
+    score = (
+        20 * float(metrics.get("json_valid", False))
+        + 10 * float(metrics.get("has_required_fields", False))
+        + 15 * float(metrics.get("count_in_range", False))
+        + 15 * float(metrics.get("length_ok_ratio", 0.0))
+        + 25 * float(metrics.get("keyword_coverage", 0.0))
+        + 15 * float(metrics.get("specificity_ratio", 0.0))
+    )
+    return round(score, 2)
+
+
+def compute_metrics(raw: str, keywords: list[str]) -> dict:
+    """Полный набор метрик для одного ответа модели."""
+    m = compute_formal_metrics(raw)
+    summary = []
+    if m["json_valid"]:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and isinstance(parsed.get("summary"), list):
+                summary = parsed["summary"]
+        except json.JSONDecodeError:
+            pass
+    m["keyword_coverage"] = keyword_coverage(summary, keywords)
+    m["specificity_ratio"] = specificity_ratio(summary)
+    m["duplicate_summary_keys"] = duplicate_summary_keys(raw)
+    m["quality_score"] = compute_quality_score(m)
+    return m
+
+
 def main() -> int:
     print("benchmark-ollama: skeleton OK", file=sys.stderr)
     return 0

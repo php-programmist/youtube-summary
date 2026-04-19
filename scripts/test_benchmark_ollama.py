@@ -163,5 +163,62 @@ class TestContentHeuristics(unittest.TestCase):
         self.assertEqual(bench.duplicate_summary_keys('{"summary": []}'), 1)
 
 
+class TestQualityScore(unittest.TestCase):
+    def test_perfect_score(self):
+        m = {
+            "json_valid": True,
+            "has_required_fields": True,
+            "count_in_range": True,
+            "length_ok_ratio": 1.0,
+            "keyword_coverage": 1.0,
+            "specificity_ratio": 1.0,
+        }
+        self.assertEqual(bench.compute_quality_score(m), 100.0)
+
+    def test_zero_on_invalid_json(self):
+        m = {
+            "json_valid": False,
+            "has_required_fields": False,
+            "count_in_range": False,
+            "length_ok_ratio": 0.0,
+            "keyword_coverage": 0.0,
+            "specificity_ratio": 0.0,
+        }
+        self.assertEqual(bench.compute_quality_score(m), 0.0)
+
+    def test_partial(self):
+        m = {
+            "json_valid": True,            # 20
+            "has_required_fields": True,   # 10
+            "count_in_range": False,       # 0
+            "length_ok_ratio": 0.5,        # 7.5
+            "keyword_coverage": 0.5,       # 12.5
+            "specificity_ratio": 0.5,      # 7.5
+        }
+        self.assertEqual(bench.compute_quality_score(m), 57.5)
+
+
+class TestComputeMetrics(unittest.TestCase):
+    def test_combines_formal_and_content(self):
+        d = {
+            "main_idea": "x",
+            "summary": [
+                f"Пункт {i} использует Claude Code и Vercel со ссылкой на 2026 год для деплоя проекта."
+                for i in range(12)
+            ],
+        }
+        raw = json.dumps(d, ensure_ascii=False)
+        m = bench.compute_metrics(raw, bench.KEYWORDS)
+        # Формальные
+        self.assertTrue(m["json_valid"])
+        self.assertEqual(m["summary_count"], 12)
+        # Контентные
+        self.assertGreater(m["keyword_coverage"], 0.0)
+        self.assertEqual(m["specificity_ratio"], 1.0)
+        self.assertEqual(m["duplicate_summary_keys"], 1)
+        # Score
+        self.assertGreater(m["quality_score"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
