@@ -4,6 +4,11 @@
 Прогоняет список моделей на одном транскрипте, измеряет время и ресурсы,
 сохраняет сырые ответы для последующей LLM-as-judge оценки оркестратором.
 
+Использует Ollama, установленную нативно в WSL (http://localhost:11434),
+а не контейнерную из docker-compose. docker-ollama в compose теперь
+без публикации порта наружу — она обслуживает только n8n через docker-сеть.
+Чтобы переопределить эндпоинт, передайте --url или выставьте OLLAMA_URL.
+
 Запуск:
   python3 scripts/benchmark-ollama.py
   python3 scripts/benchmark-ollama.py --runs 3 --output-dir benchmark-results/
@@ -514,6 +519,9 @@ class ProgressReporter:
     def model_skipped(self, reason: str):
         self._write(f"  ⚠ SKIPPED: {reason}")
 
+    def model_resumed(self, path: str):
+        self._write(f"  ↻ RESUMED from {path}")
+
     def overall_done(self, elapsed: float, ok: int, skipped: int, unusable: int, report_path: str):
         self._write(
             f"[BENCH] готово за {_fmt_mmss(elapsed)} · "
@@ -585,6 +593,24 @@ def _do_one_run(base_url: str, model: str, messages: list[dict],
         "raw_response": raw,
         "metrics": metrics,
     }
+
+
+def _model_slug(model: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", model)
+
+
+def _load_cached_result(per_model_dir: Path, model: str) -> Optional[dict]:
+    """Читает сохранённый результат для модели, если файл существует и валиден."""
+    path = per_model_dir / f"{_model_slug(model)}.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict) or data.get("model") != model:
+        return None
+    return data
 
 
 def run_model(base_url: str, model: str, idx: int, total: int,
@@ -672,8 +698,7 @@ def run_model(base_url: str, model: str, idx: int, total: int,
 
     # 7. Persist per-model JSON immediately
     per_model_dir.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", model)
-    (per_model_dir / f"{slug}.json").write_text(
+    (per_model_dir / f"{_model_slug(model)}.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2)
     )
 
@@ -859,6 +884,10 @@ def main() -> int:
     ap.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
     ap.add_argument("--quiet", action="store_true",
                     help="Отключить TTY-режим прогресса (одна строка на событие).")
+    ap.add_argument("--force", action="store_true",
+                    help="Перезапустить модели даже если per-model/*.json уже есть. "
+                         "По умолчанию такие модели пропускаются и их результат "
+                         "берётся из кэша.")
     args = ap.parse_args()
 
     transcript_path = Path(args.transcript)
@@ -891,6 +920,16 @@ def main() -> int:
     results: list[dict] = []
     try:
         for i, model in enumerate(models, 1):
+            cached = None if args.force else _load_cached_result(per_model_dir, model)
+            if cached is not None:
+                reporter.model_start(i, len(models), model)
+                reporter.model_resumed(
+                    str(per_model_dir / f"{_model_slug(model)}.json")
+                )
+                results.append(cached)
+                _write_reports(output_dir, started_at, args, transcript_path,
+                               len(trimmed), results, t_start, finished=False)
+                continue
             try:
                 r = run_model(
                     args.url, model, i, len(models),

@@ -23,10 +23,11 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:11434:11434"  # локальный доступ для отладочных скриптов
+    # Порт наружу не публикуем — конфликт с WSL-ollama на 11434.
+    # n8n обращается через docker network: http://ollama:11434
+    # Для отладочных скриптов используется WSL-ollama на host:11434.
     volumes:
-      - ./data/ollama:/root/.ollama
+      - ollama-data:/root/.ollama
     environment:
       - OLLAMA_KEEP_ALIVE=5m  # совместимо с явными keep_alive в запросах
     healthcheck:
@@ -56,3 +57,4 @@ services:
 
 volumes:
   n8n-data:
+  ollama-data:
