@@ -40,7 +40,11 @@ apply_active_from_file() {
     local id active
     id="$(python3 -c "import json; print(json.load(open('$file'))['id'])")"
     active="$(python3 -c "import json; print('true' if json.load(open('$file')).get('active') else 'false')")"
-    "${EXEC[@]}" n8n update:workflow --id="$id" --active="$active" >/dev/null
+    if [[ "$active" == "true" ]]; then
+        "${EXEC[@]}" n8n publish:workflow --id="$id" >/dev/null
+    else
+        "${EXEC[@]}" n8n unpublish:workflow --id="$id" >/dev/null
+    fi
     echo "  id=$id active=$active"
 }
 
@@ -72,7 +76,7 @@ cmd_activate() {
     [[ -f "$file" ]] || { echo "No such file: $file" >&2; exit 1; }
     local id
     id="$(python3 -c "import json,sys; print(json.load(open('$file'))['id'])")"
-    "${EXEC[@]}" n8n update:workflow --id="$id" --active=true
+    "${EXEC[@]}" n8n publish:workflow --id="$id"
 }
 
 cmd_activate_all() {
