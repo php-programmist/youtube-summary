@@ -88,27 +88,63 @@ docker compose up -d --build
 
 Открыть [http://localhost:5678](http://localhost:5678) и создать учётную запись владельца.
 
-## Импорт workflow'ов
+## Первичное развертывание workflow'ов
 
-1. В n8n: нажать "+" → Workflows → "..." → Import from file .
-2. Импортировать `workflows/yt-summary-hourly.json`.
-3. Импортировать `workflows/yt-summary-on-error.json`.
+Workflow'ы лежат в `workflows/` как JSON и деплоятся через n8n CLI внутри контейнера — без импорта через UI. Каталог `./workflows` смонтирован в контейнер как `/workflows` (см. `docker-compose.yml`).
 
-### Credentials
+```bash
+./scripts/n8n.sh push-all
+```
 
-#### Создать credential типа **Telegram API**:
+Команда создаёт оба workflow в n8n c id и связями из JSON. Ссылка между `yt-summary-hourly` и `yt-summary-on-error` (error workflow) уже зашита в JSON по id — руками связывать ничего не нужно.
 
-- Поле **Access Token**: значение `TELEGRAM_BOT_TOKEN`.
+### Credentials (разово через UI)
 
-### Связать error workflow
+CLI n8n не даёт создавать credentials со всеми полями, поэтому — один раз в UI:
 
-Открыть `yt-summary-on-error` и нажать кнопку "Publish". Без этого не получится его выбрать в качестве error workflow.
-
-В настройках `yt-summary-hourly` → "..." → **Settings** → поле **Error Workflow** → выбрать `yt-summary-on-error`.
+1. В n8n создать credential типа **Telegram API**, поле **Access Token** = `TELEGRAM_BOT_TOKEN`.
+2. Открыть `yt-summary-hourly` → узел Telegram → выбрать созданный credential.
+3. Сохранить новый id credential в git:
+   ```bash
+   ./scripts/n8n.sh pull
+   git add workflows/ && git commit -m "link telegram credential"
+   ```
 
 ### Активировать
 
-Включить оба workflow тумблером (верхний правый угол в редакторе).
+```bash
+./scripts/n8n.sh activate-all
+```
+
+## Изменение workflow
+
+Вариант A — через n8n UI (правка в редакторе):
+
+```bash
+./scripts/n8n.sh pull            # забрать изменения из n8n в workflows/
+git diff workflows/              # проверить diff
+git add workflows/ && git commit
+```
+
+Вариант B — через JSON-файлы (для ИИ-агентов и правок вслепую):
+
+```bash
+$EDITOR workflows/yt-summary-hourly.json
+./scripts/n8n.sh push yt-summary-hourly
+```
+
+`push` всегда деактивирует workflow в n8n (поведение CLI) и сразу восстанавливает состояние `active` из JSON, так что активные остаются активными.
+
+### Команды `scripts/n8n.sh`
+
+| Команда | Что делает |
+|---|---|
+| `pull` | Экспортирует все workflow из n8n, нормализует (убирает волатильные поля, сортирует ключи), переименовывает по `name` |
+| `push <slug>` | Импортирует `workflows/<slug>.json` в n8n и синхронизирует флаг `active` |
+| `push-all` | Импортирует все `workflows/*.json` |
+| `list` | Список workflow в n8n (`id|name`) |
+| `activate <slug>` | Активирует workflow по id из JSON |
+| `activate-all` | Активирует все workflow в n8n |
 
 ## Первый запуск
 
@@ -173,9 +209,12 @@ yt-summary/
 ├── .env                          # локальный, в .gitignore
 ├── .gitignore
 ├── README.md
-├── workflows/
+├── workflows/                    # bind-mounted в n8n как /workflows
 │   ├── yt-summary-hourly.json
 │   └── yt-summary-on-error.json
+├── scripts/
+│   ├── n8n.sh                    # pull/push/activate workflow'ов через CLI n8n
+│   └── n8n_sync.py               # нормализация JSON (стабильные git-diff'ы)
 ├── ollama/
 │   └── init-model.sh
 └── data/                         # bind-volume только для ollama (модели)

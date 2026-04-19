@@ -15,6 +15,7 @@ services:
       - N8N_SECURE_COOKIE=false
     volumes:
       - n8n-data:/home/node/.n8n
+      - ./workflows:/workflows
     depends_on:
       ollama:
         condition: service_healthy
