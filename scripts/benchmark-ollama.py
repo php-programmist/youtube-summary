@@ -819,9 +819,130 @@ def _skipped(model: str, reason: str) -> dict:
     }
 
 
+# === SECTION: MAIN ===
+
+def _load_models_from_file(path: Path) -> list[str]:
+    """Читает список моделей из текстового файла (одна модель на строку, # — комментарий)."""
+    out = []
+    for line in path.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            out.append(line)
+    return out
+
+
+def _detect_gpu() -> dict:
+    info = {"gpu": None, "gpu_total_vram_mb": None}
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            first = r.stdout.strip().splitlines()[0]
+            name, total = [x.strip() for x in first.split(",")]
+            info["gpu"] = name
+            info["gpu_total_vram_mb"] = int(total)
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        pass
+    return info
+
+
 def main() -> int:
-    print("benchmark-ollama: skeleton OK", file=sys.stderr)
+    ap = argparse.ArgumentParser(description="Benchmark Ollama models for yt-summary.")
+    ap.add_argument("--transcript", default=str(DEFAULT_TRANSCRIPT))
+    ap.add_argument("--title", default="Seedance 2.0 + Claude Code Creates $10k Websites in Minutes")
+    ap.add_argument("--runs", type=int, default=RUNS_PER_MODEL)
+    ap.add_argument("--url", default=os.environ.get("OLLAMA_URL", "http://localhost:11434"))
+    ap.add_argument("--models-file", type=str, default=None,
+                    help="Файл со списком моделей (одна на строку). Иначе DEFAULT_MODELS из скрипта.")
+    ap.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    ap.add_argument("--quiet", action="store_true",
+                    help="Отключить TTY-режим прогресса (одна строка на событие).")
+    args = ap.parse_args()
+
+    transcript_path = Path(args.transcript)
+    output_dir = Path(args.output_dir)
+    per_model_dir = output_dir / "per-model"
+
+    # Подготовка данных
+    raw_content, lang = load_transcript(transcript_path)
+    trimmed = raw_content[:TRIM_LIMIT]
+    user_prompt = build_user_prompt(args.title, trimmed)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    # Список моделей
+    if args.models_file:
+        models = _load_models_from_file(Path(args.models_file))
+    else:
+        models = list(DEFAULT_MODELS)
+    if not models:
+        print("Список моделей пуст.", file=sys.stderr)
+        return 2
+
+    reporter = ProgressReporter(is_tty=False if args.quiet else None)
+    reporter.overall_start(total_models=len(models), runs_per_model=args.runs)
+
+    started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    t_start = time.monotonic()
+    results: list[dict] = []
+    try:
+        for i, model in enumerate(models, 1):
+            try:
+                r = run_model(
+                    args.url, model, i, len(models),
+                    messages, args.runs, KEYWORDS, reporter, per_model_dir,
+                )
+            except Exception as e:  # хотим продолжить со следующей моделью
+                r = _skipped(model, f"unexpected error: {type(e).__name__}: {e}")
+                reporter.model_skipped(str(e))
+            results.append(r)
+            # Промежуточный отчёт после каждой модели
+            _write_reports(output_dir, started_at, args, transcript_path,
+                           len(trimmed), results, t_start, finished=False)
+    except KeyboardInterrupt:
+        print("\n[BENCH] прервано пользователем — пишу частичный отчёт", file=sys.stderr)
+
+    elapsed = time.monotonic() - t_start
+    final_md = _write_reports(output_dir, started_at, args, transcript_path,
+                              len(trimmed), results, t_start, finished=True)
+
+    counts = {"OK": 0, "SKIPPED": 0, "UNUSABLE": 0}
+    for r in results:
+        counts[r.get("status", "SKIPPED")] = counts.get(r.get("status", "SKIPPED"), 0) + 1
+    reporter.overall_done(
+        elapsed=elapsed,
+        ok=counts.get("OK", 0),
+        skipped=counts.get("SKIPPED", 0),
+        unusable=counts.get("UNUSABLE", 0),
+        report_path=str(final_md),
+    )
     return 0
+
+
+def _write_reports(output_dir: Path, started_at: str, args, transcript_path: Path,
+                   transcript_chars: int, results: list[dict],
+                   t_start: float, finished: bool) -> Path:
+    meta = {
+        "transcript_path": str(transcript_path),
+        "transcript_chars": transcript_chars,
+        "trim_limit": TRIM_LIMIT,
+        "runs_per_model": args.runs,
+        "ollama_url": args.url,
+        "started_at": started_at,
+        "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds") if finished else None,
+        "elapsed_s": round(time.monotonic() - t_start, 1),
+        "host": _detect_gpu(),
+        "partial": not finished,
+    }
+    json_path = output_dir / "benchmark-results.json"
+    md_path = output_dir / "benchmark-results.md"
+    write_json_report(json_path, meta, results)
+    write_markdown_report(md_path, meta, results)
+    return md_path
 
 
 if __name__ == "__main__":
