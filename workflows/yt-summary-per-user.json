@@ -352,6 +352,7 @@
           "response": {
             "response": {
               "fullResponse": true,
+              "neverError": true,
               "responseFormat": "json"
             }
           }
@@ -395,7 +396,7 @@
                 "conditions": [
                   {
                     "id": "cond-has-transcript-status",
-                    "leftValue": "={{$json.statusCode}}",
+                    "leftValue": "={{ $json.statusCode ?? $json.error?.status ?? 0 }}",
                     "operator": {
                       "operation": "equals",
                       "type": "number"
@@ -404,7 +405,7 @@
                   },
                   {
                     "id": "cond-has-transcript-content",
-                    "leftValue": "={{$json.body && $json.body.content ? $json.body.content.length : 0}}",
+                    "leftValue": "={{ $json.body?.content?.length ?? 0 }}",
                     "operator": {
                       "operation": "gt",
                       "type": "number"
@@ -427,7 +428,7 @@
                 "conditions": [
                   {
                     "id": "cond-retry-5xx",
-                    "leftValue": "={{$json.statusCode}}",
+                    "leftValue": "={{ $json.statusCode ?? $json.error?.status ?? 0 }}",
                     "operator": {
                       "operation": "gte",
                       "type": "number"
@@ -436,12 +437,21 @@
                   },
                   {
                     "id": "cond-retry-429",
-                    "leftValue": "={{$json.statusCode}}",
+                    "leftValue": "={{ $json.statusCode ?? $json.error?.status ?? 0 }}",
                     "operator": {
                       "operation": "equals",
                       "type": "number"
                     },
                     "rightValue": 429
+                  },
+                  {
+                    "id": "cond-retry-network",
+                    "leftValue": "={{ $json.statusCode ?? $json.error?.status ?? 0 }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "number"
+                    },
+                    "rightValue": 0
                   }
                 ],
                 "options": {
