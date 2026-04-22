@@ -56,6 +56,17 @@
           }
         ]
       ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Code - Load Users",
+            "type": "main"
+          }
+        ]
+      ]
     }
   },
   "createdAt": "2026-04-18T11:42:29.406Z",
@@ -143,6 +154,23 @@
       ],
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1
+    },
+    {
+      "id": "b1000001-0000-0000-0000-000000000004",
+      "name": "Webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "yt-summary-kick",
+        "responseMode": "onReceived"
+      },
+      "position": [
+        -144,
+        4208
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "a7c3e5d2-9f1b-4e8a-b2c5-1d6e4f7a8b9c"
     }
   ],
   "pinData": {},

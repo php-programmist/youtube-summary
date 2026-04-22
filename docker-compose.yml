@@ -20,6 +20,32 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  n8n-kicker:
+    # Дёргает webhook yt-summary-hourly сразу после старта n8n,
+    # чтобы после `docker compose up` новые видео забирались без ожидания cron.
+    image: curlimages/curl:8.10.1
+    depends_on:
+      n8n:
+        condition: service_healthy
+    restart: "no"
+    command:
+      - "-fsS"
+      - "--retry"
+      - "10"
+      - "--retry-delay"
+      - "2"
+      - "--retry-connrefused"
+      - "--retry-all-errors"
+      - "-X"
+      - "POST"
+      - "http://n8n:5678/webhook/yt-summary-kick"
 
   ollama:
     image: ollama/ollama:latest

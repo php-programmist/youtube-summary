@@ -99,6 +99,8 @@ cp .env.example .env
 docker compose up -d
 ```
 
+После каждого `docker compose up` sidecar-контейнер `n8n-kicker` дожидается healthy-состояния n8n и дёргает webhook `yt-summary-hourly`, так что свежие видео из плейлиста забираются сразу, без ожидания почасового cron. Сам kicker завершается после одного запроса (`docker compose ps` покажет его как `exited (0)`).
+
 Открыть [http://localhost:5678](http://localhost:5678) и создать учётную запись владельца.
 
 ## Выбор LLM
@@ -211,15 +213,18 @@ $EDITOR workflows/yt-summary-hourly.json
 
 ## Первый запуск
 
-Запустить `yt-summary-hourly` вручную кнопкой **Execute workflow**. RSS возвращает обычно последние ~15 видео плейлиста — по каждому в Telegram придёт сообщение с главной идеей и кратким обзором.
+После `push-all` + `activate-all` достаточно `docker compose up -d` — sidecar `n8n-kicker` сам дёрнет webhook `yt-summary-hourly`. RSS возвращает обычно последние ~15 видео плейлиста — по каждому в Telegram придёт сообщение с главной идеей и кратким обзором.
 
-Повторный ручной запуск сразу после → 0 сообщений: все видео уже помечены обработанными в `workflows/state/processed.json`.
+Альтернативно — запустить `yt-summary-hourly` вручную кнопкой **Execute workflow** в UI.
+
+Повторный запуск сразу после → 0 сообщений: все видео уже помечены обработанными в `workflows/state/processed.json`.
 
 ## Верификация
 
 | Сценарий | Ожидаемый результат |
 |---|---|
-| Первый ручной запуск при пустой БД | ~15 сообщений в Telegram |
+| Первый `docker compose up` при пустой БД | ~15 сообщений в Telegram (kicker дёрнул webhook) |
+| `docker compose ps` после старта | `n8n-kicker` в статусе `exited (0)` |
 | Повторный запуск сразу после | 0 новых сообщений |
 | Видео без субтитров | Короткое уведомление «Субтитров нет» |
 | Выгрузка модели | `docker exec ollama ollama ps` — список пуст после завершения workflow |
@@ -258,6 +263,9 @@ docker compose up -d
 **Telegram 400 Bad Request**
 Обычно — невалидный HTML в тексте сообщения (неэкранированные `<`, `>`, `&`). Шаблон в узле уже экранирует заголовки; если редактируете шаблон — не забывайте об этом.
 
+**`n8n-kicker` завершается с ошибкой**
+Контейнер `n8n-kicker` ретраит webhook (`--retry 10 --retry-all-errors`) и падает только если n8n так и не ответил 200. Частая причина — `yt-summary-hourly` не активирован, поэтому production-webhook `yt-summary-kick` не зарегистрирован. Проверить: `./scripts/n8n.sh list` → в колонке `active` должно быть `true`; если нет — `./scripts/n8n.sh activate-all`.
+
 ## Переменные окружения
 
 Все переменные описаны в разделе [Настройка](#настройка). Значения подтягиваются в workflow через `{{$env.VARIABLE_NAME}}`.
@@ -272,7 +280,7 @@ yt-summary/
 ├── .gitignore
 ├── README.md
 ├── workflows/                    # bind-mounted в n8n как /workflows
-│   ├── yt-summary-hourly.json    # триггер + loop по пользователям
+│   ├── yt-summary-hourly.json    # триггеры (cron + webhook) + loop по пользователям
 │   ├── yt-summary-per-user.json  # sub-workflow обработки одного пользователя
 │   ├── yt-summary-on-error.json  # алерт в админский Telegram при ошибке
 │   └── state/
