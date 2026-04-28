@@ -265,6 +265,7 @@
     },
     {
       "id": "a0000001-0000-0000-0000-000000000002",
+      "maxTries": 3,
       "name": "HTTP Request - RSS Playlist",
       "parameters": {
         "options": {
@@ -280,8 +281,10 @@
         80,
         3920
       ],
+      "retryOnFail": true,
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2
+      "typeVersion": 4.2,
+      "waitBetweenTries": 3000
     },
     {
       "id": "a0000001-0000-0000-0000-000000000003",
