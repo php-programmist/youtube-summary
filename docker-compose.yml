@@ -17,6 +17,23 @@ services:
     volumes:
       - n8n-data:/home/node/.n8n
       - ./workflows:/workflows
+    # Bind-mount /workflows иногда тихо не прицепляется при старте Docker до готовности WSL-FS
+    # (внутри контейнера остаётся пустой tmpfs). Ждём появления users.json до 60с,
+    # иначе выходим — restart: unless-stopped перезапустит и mount привяжется заново.
+    entrypoint: ["/bin/sh","-c"]
+    command:
+      - |
+        i=0
+        until [ -f /workflows/state/users.json ]; do
+          i=$$((i+1))
+          if [ $$i -gt 30 ]; then
+            echo "FATAL: /workflows bind-mount empty/broken after 60s" >&2
+            exit 1
+          fi
+          echo "waiting for /workflows/state/users.json ($$i/30)..."
+          sleep 2
+        done
+        exec /sbin/tini -- /docker-entrypoint.sh
     depends_on:
       ollama:
         condition: service_healthy
