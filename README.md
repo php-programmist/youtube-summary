@@ -1,6 +1,6 @@
 # yt-summary
 
-Локальный сервис: раз в час проверяет YouTube-плейлисты через RSS, для каждого нового видео получает субтитры через supadata.ai, суммирует локальной Ollama (8–12 пунктов + главная идея) и шлёт отчёт в Telegram. Поддерживает несколько пользователей — каждый со своим плейлистом и Telegram-чатом. Модель загружается в VRAM только при наличии субтитров и выгружается после отправки всех сообщений. Дедупликация — через общий `workflows/state/processed.json`.
+Локальный сервис: раз в час проверяет YouTube-плейлисты через YouTube Data API v3, для каждого нового видео получает субтитры через supadata.ai, суммирует локальной Ollama (8–12 пунктов + главная идея) и шлёт отчёт в Telegram. Поддерживает несколько пользователей — каждый со своим плейлистом и Telegram-чатом. Модель загружается в VRAM только при наличии субтитров и выгружается после отправки всех сообщений. Дедупликация — через общий `workflows/state/processed.json`.
 
 ## Стек
 
@@ -12,9 +12,23 @@
 ## Prerequisites
 
 ### YouTube
+
 Создать публичный плейлист (или доступный только по ссылке) на YouTube и получить его ID из URL `?list=PLxxxxxxxxxxxxxxx`.
 
-Задать сортировку: **Дате добавления: сначала новые**. Без этого workflow будет видеть только первые 15 видео плейлиста по порядку добавления.
+Задать сортировку: **Дате добавления: сначала новые** — workflow возьмёт первые 50 видео в этом порядке.
+
+#### YouTube Data API v3 key
+
+Workflow читает плейлисты через YouTube Data API v3 (публичный RSS-эндпоинт `feeds/videos.xml` нестабилен с начала 2026 года и периодически возвращает 404). Получение ключа:
+
+1. Открыть [Google Cloud Console](https://console.cloud.google.com/) — войти под Google-аккаунтом.
+2. Создать новый проект (вверху слева, селектор проектов → **New Project**) или выбрать существующий.
+3. **APIs & Services → Library** → найти **YouTube Data API v3** → **Enable**.
+4. **APIs & Services → Credentials → Create credentials → API key**. Скопировать значение — оно вида `AIza...`.
+5. (Рекомендуется) Сразу нажать **Edit API key** на свежесозданном ключе → **API restrictions → Restrict key → YouTube Data API v3** → **Save**. Это ограничит ключ только нужным API.
+6. Положить значение в `.env` как `YOUTUBE_API_KEY=AIza...`.
+
+Квота по умолчанию — **10 000 units/день**, вызов `playlistItems.list` стоит **1 unit**. Двое пользователей × 24 запуска/день = ~50 units. Запас огромный; квоту видно в **APIs & Services → Quotas**.
 
 ### Telegram
 - Создать бота через @BotFather и получить его токен. 
@@ -69,6 +83,7 @@ cp .env.example .env
 | Переменная | Описание | Пример |
 |---|---|---|
 | `YOUTUBE_PLAYLIST_ID` | ID плейлиста из URL `?list=...` | `PLxxxxxxxxxxxxxxx` |
+| `YOUTUBE_API_KEY` | API-ключ YouTube Data API v3 (см. [Prerequisites](#youtube-data-api-v3-key)) | `AIza...` |
 | `TELEGRAM_BOT_TOKEN` | Токен бота от @BotFather | `123456:AA...` |
 | `TELEGRAM_CHAT_ID` | ID чата/канала для ошибок (админский; per-user чаты — в `users.json`) | `123456789` |
 | `SUPADATA_API_KEY` | API-ключ supadata.ai | `sd_...` |
@@ -213,7 +228,7 @@ $EDITOR workflows/yt-summary-hourly.json
 
 ## Первый запуск
 
-После `push-all` + `activate-all` достаточно `docker compose up -d` — sidecar `n8n-kicker` сам дёрнет webhook `yt-summary-hourly`. RSS возвращает обычно последние ~15 видео плейлиста — по каждому в Telegram придёт сообщение с главной идеей и кратким обзором.
+После `push-all` + `activate-all` достаточно `docker compose up -d` — sidecar `n8n-kicker` сам дёрнет webhook `yt-summary-hourly`. API возвращает до 50 свежих видео плейлиста — по каждому в Telegram придёт сообщение с главной идеей и кратким обзором.
 
 Альтернативно — запустить `yt-summary-hourly` вручную кнопкой **Execute workflow** в UI.
 
@@ -257,8 +272,11 @@ docker compose up -d
 **Длинные субтитры обрезаются**
 Текущий лимит ~40k символов перед подачей в Ollama. Видео длиннее ~1.5 часа будет суммировано частично.
 
-**RSS отдаёт только ~15 видео**
-Ограничение YouTube RSS-ленты. Более старые видео плейлиста не попадут в выборку. При необходимости перейти на endpoint `GET /v1/youtube/playlist/videos` supadata.ai.
+**YouTube API: 403 quotaExceeded**
+Дефолтная квота — 10 000 units/день, один прогон по двум плейлистам тратит 2 units, исчерпать почти невозможно. Если всё-таки уперлись: запросить увеличение в Google Cloud Console (**APIs & Services → Quotas**) или временно отключить часть пользователей в `users.json`.
+
+**YouTube API: 400 keyInvalid / 403 forbidden**
+Проверить, что `YOUTUBE_API_KEY` корректно проброшен в контейнер: `docker exec n8n env | grep YOUTUBE_API_KEY`. Если ключа там нет — пересоздать контейнер: `docker compose up -d --force-recreate n8n`. Если ключ есть, но 403 — в Google Cloud Console убедиться, что API restriction разрешает **YouTube Data API v3** (либо снять restriction совсем).
 
 **Telegram 400 Bad Request**
 Обычно — невалидный HTML в тексте сообщения (неэкранированные `<`, `>`, `&`). Шаблон в узле уже экранирует заголовки; если редактируете шаблон — не забывайте об этом.

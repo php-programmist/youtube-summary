@@ -105,7 +105,7 @@
         [
           {
             "index": 0,
-            "node": "HTTP Request - RSS Playlist",
+            "node": "HTTP Request - Playlist Items",
             "type": "main"
           }
         ]
@@ -122,12 +122,12 @@
         ]
       ]
     },
-    "HTTP Request - RSS Playlist": {
+    "HTTP Request - Playlist Items": {
       "main": [
         [
           {
             "index": 0,
-            "node": "XML",
+            "node": "Code - Normalize List",
             "type": "main"
           }
         ]
@@ -230,17 +230,6 @@
           }
         ]
       ]
-    },
-    "XML": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Code - Normalize List",
-            "type": "main"
-          }
-        ]
-      ]
     }
   },
   "createdAt": "2026-04-19T00:00:00.000Z",
@@ -266,16 +255,10 @@
     {
       "id": "a0000001-0000-0000-0000-000000000002",
       "maxTries": 3,
-      "name": "HTTP Request - RSS Playlist",
+      "name": "HTTP Request - Playlist Items",
       "parameters": {
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "text"
-            }
-          }
-        },
-        "url": "=https://www.youtube.com/feeds/videos.xml?playlist_id={{$('Execute Workflow Trigger').first().json.playlistId}}"
+        "options": {},
+        "url": "=https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId={{$('Execute Workflow Trigger').first().json.playlistId}}&key={{$env.YOUTUBE_API_KEY}}"
       },
       "position": [
         80,
@@ -287,23 +270,10 @@
       "waitBetweenTries": 3000
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000003",
-      "name": "XML",
-      "parameters": {
-        "options": {}
-      },
-      "position": [
-        304,
-        3920
-      ],
-      "type": "n8n-nodes-base.xml",
-      "typeVersion": 1
-    },
-    {
       "id": "a0000001-0000-0000-0000-000000000004",
       "name": "Code - Normalize List",
       "parameters": {
-        "jsCode": "// Normalize XML feed entries into flat items: { videoId, title, publishedAt, url }\nconst data = $input.first().json;\nconst feed = data.feed;\n\nlet entries = feed.entry;\nif (!entries) return [];\nif (!Array.isArray(entries)) entries = [entries];\n\nreturn entries.map(entry => ({\n  json: {\n    videoId: entry['yt:videoId'],\n    title: Array.isArray(entry.title) ? entry.title[0] : entry.title,\n    publishedAt: Array.isArray(entry.published) ? entry.published[0] : entry.published,\n    url: `https://youtu.be/${entry['yt:videoId']}`\n  }\n}));"
+        "jsCode": "// Normalize YouTube Data API v3 playlistItems response into flat items: { videoId, title, publishedAt, url }\nconst data = $input.first().json;\nconst items = data.items || [];\n\nreturn items.map(it => ({\n  json: {\n    videoId: it.snippet.resourceId.videoId,\n    title: it.snippet.title,\n    publishedAt: it.snippet.publishedAt,\n    url: `https://youtu.be/${it.snippet.resourceId.videoId}`\n  }\n}));"
       },
       "position": [
         528,
